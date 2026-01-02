@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>FDS - {{ produto.NomeProduto }}</title>
+    <style>
+        @page { 
+            size: A4; 
+            margin: 1.5cm; 
+            @bottom-center { 
+                content: "Página " counter(page); 
+                font-family: Helvetica, Arial, sans-serif;
+                font-size: 8pt;
+            } 
+        }
+        body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; line-height: 1.3; color: #000; }
+        
+        .header-box { 
+            border: 1px solid #000; 
+            padding: 15px; /* Aumentei um pouco o padding já que não tem logo */
+            text-align: center; 
+            margin-bottom: 20px; 
+            background-color: #f2f2f2; 
+        }
+        
+        h1 { font-size: 16pt; margin: 0; font-weight: bold; text-transform: uppercase; }
+        
+        h2 { 
+            font-size: 11pt; background-color: #333; color: #fff; padding: 5px 8px; 
+            margin-top: 20px; margin-bottom: 8px; font-weight: bold; text-transform: uppercase;
+            page-break-after: avoid; 
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; page-break-inside: avoid; }
+        td { padding: 4px; border-bottom: 1px solid #ccc; vertical-align: top; text-align: left; }
+        .label { font-weight: bold; width: 35%; background-color: #f9f9f9; border-right: 1px solid #ccc; }
+        
+        .danger { color: #d00; font-weight: bold; text-transform: uppercase; border: 1px solid #d00; padding: 2px 5px; display: inline-block; }
+        ul { margin: 5px 0; padding-left: 20px; }
+        li { margin-bottom: 3px; }
+
+        .footer-disclaimer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #000; font-size: 8pt; text-align: justify; color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="header-box">
+        <h1>FDS - Ficha com Dados de Segurança</h1>
+        <p style="font-size: 10pt; margin-top: 10px; font-weight: bold;">Em conformidade com ABNT NBR 14725:2023</p>
+    </div>
+
+    <h2>1. Identificação</h2>
+    <table>
+        <tr><td class="label">Nome do produto:</td><td><strong>{{ produto.NomeProduto }}</strong></td></tr>
+        <tr><td class="label">Código interno:</td><td>{{ produto.CodigoInterno }}</td></tr>
+        <tr><td class="label">Uso recomendado:</td><td>Uso industrial/profissional.</td></tr>
+        <tr><td class="label">Fornecedor:</td><td>{{ produto.Fornecedor }}</td></tr>
+        <tr><td class="label">Telefone de emergência:</td><td>{{ produto.TelefoneEmergencia }}</td></tr>
+    </table>
+
+    <h2>2. Identificação de Perigos</h2>
+    <div style="margin-bottom: 10px;">
+        <strong>Palavra de advertência:</strong> 
+        {% if produto.PalavraAdvertencia %}
+            <span class="danger">{{ produto.PalavraAdvertencia }}</span>
+        {% else %}
+            <span>Não exigido</span>
+        {% endif %}
+    </div>
+    
+    <p><strong>Frases de Perigo (H):</strong></p>
+    <ul>
+    {% for frase in frases_h %}
+        <li><strong>{{ frase.Codigo }}:</strong> {{ frase.Texto }}</li>
+    {% else %}
+        <li>Não classificado como perigoso.</li>
+    {% endfor %}
+    </ul>
+
+    <p style="margin-top: 10px;"><strong>Frases de Precaução (P):</strong></p>
+    <ul>
+    {% for frase in frases_p %}
+        <li><strong>{{ frase.Codigo }}:</strong> {{ frase.Texto }}</li>
+    {% else %}
+        <li>Nenhuma precaução específica listada.</li>
+    {% endfor %}
+    </ul>
+
+    <h2>3. Composição e Informações sobre os Ingredientes</h2>
+    <p><strong>Tipo de produto:</strong> Mistura</p>
+    <table style="margin-top: 5px;">
+        <tr><td class="label">Ingredientes perigosos:</td><td>{{ produto.IngredientesPerigosos|default('Não aplicável ou informações não disponíveis.', true) }}</td></tr>
+    </table>
+
+    <h2>4. Medidas de Primeiros-Socorros</h2>
+    <table>
+        <tr><td class="label">Inalação:</td><td>Remover a vítima para local ventilado. Procurar auxílio médico se houver sintomas.</td></tr>
+        <tr><td class="label">Contato com a pele:</td><td>Lavar com água e sabão abundantes. Retirar roupas contaminadas.</td></tr>
+        <tr><td class="label">Contato com os olhos:</td><td>Enxaguar cuidadosamente com água durante vários minutos. Remover lentes de contato.</td></tr>
+        <tr><td class="label">Ingestão:</td><td>NÃO provocar vômito. Procurar atendimento médico imediato apresentando esta ficha.</td></tr>
+    </table>
+
+    <h2>5. Medidas de Combate a Incêndio</h2>
+    <p><strong>Meios de extinção:</strong> Pó químico, CO2, neblina de água. <br><strong>Contraindicação:</strong> Não usar jato de água direto.</p>
+    
+    <h2>6. Medidas de Controle para Derramamento ou Vazamento</h2>
+    <p>Isolar a área. Usar EPI adequado. Conter o vazamento com areia ou material absorvente inerte.</p>
+
+    <h2>7. Manuseio e Armazenamento</h2>
+    <p>Armazenar em local fresco, seco e ventilado. Manter afastado de calor e fontes de ignição. Manter recipiente fechado.</p>
+
+    <h2>8. Controle de Exposição e Proteção Individual</h2>
+    <p><strong>EPI Recomendado:</strong> Luvas de proteção química, óculos de segurança e máscara respiratória adequada.</p>
+
+    <h2>9. Propriedades Físicas e Químicas</h2>
+    <table>
+        <tr><td class="label">Estado físico:</td><td>{{ produto.EstadoFisico }}</td></tr>
+        <tr><td class="label">Cor:</td><td>{{ produto.Cor }}</td></tr>
+        <tr><td class="label">Odor:</td><td>{{ produto.Odor }}</td></tr>
+        <tr><td class="label">pH:</td><td>{{ produto.pH }}</td></tr>
+        <tr><td class="label">Ponto de Fulgor:</td><td>{{ produto.PontoFulgor }}</td></tr>
+        <tr><td class="label">Densidade:</td><td>{{ produto.Densidade }}</td></tr>
+        <tr><td class="label">Solubilidade:</td><td>{{ produto.Solubilidade|default('Miscível em água', true) }}</td></tr>
+    </table>
+
+    <h2>10. Estabilidade e Reatividade</h2>
+    <p>Estável sob condições normais. Evitar calor excessivo e oxidantes fortes.</p>
+
+    <h2>11. Informações Toxicológicas</h2>
+    <p>Baseado nos componentes, o produto pode apresentar riscos à saúde conforme detalhado na Seção 2.</p>
+
+    <h2>12. Informações Ecológicas</h2>
+    <p>Evitar que o produto atinja cursos d'água ou esgoto. O descarte incorreto pode ser nocivo.</p>
+
+    <h2>13. Considerações sobre Destinação Final</h2>
+    <p>Descarte conforme regulamentação local (CONAMA), preferencialmente incineração ou aterro industrial classe I.</p>
+
+    <h2>14. Informações sobre Transporte</h2>
+    <table>
+        <tr><td class="label">Número ONU:</td><td><strong>{{ produto.NumeroONU }}</strong></td></tr>
+        <tr><td class="label">Nome Apropriado p/ Embarque:</td><td>{{ produto.NomeEmbarque }}</td></tr>
+        <tr><td class="label">Classe de Risco:</td><td>{{ produto.ClasseRisco }}</td></tr>
+        <tr><td class="label">Grupo de Embalagem:</td><td>{{ produto.GrupoEmbalagem }}</td></tr>
+    </table>
+
+    <h2>15. Informações sobre Regulamentações</h2>
+    <p>Produto classificado conforme a Norma ABNT-NBR 14725:2023.</p>
+
+    <h2>16. Outras Informações</h2>
+    <p><strong>Data de elaboração/Revisão:</strong> {{ data_emissao }}</p>
+    
+    <div class="footer-disclaimer">
+        As informações contidas nesta FDS baseiam-se no atual estado do nosso conhecimento. É responsabilidade do usuário assegurar-se de que estas informações são adequadas para o uso específico do produto.
+    </div>
+
+</body>
+</html>
