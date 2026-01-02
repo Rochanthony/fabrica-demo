@@ -28,7 +28,7 @@ with st.sidebar:
 class Material:
     def __init__(self, nome, custo, cas, riscos):
         self.nome = nome
-@@ -38,18 +39,50 @@ def adicionar_ingrediente(self, material_obj, qtd):
+def adicionar_ingrediente(self, material_obj, qtd):
             'qtd_teorica': qtd
         }
 
@@ -173,3 +173,4 @@ with aba_gestao:
     else:
         st.info("Nenhum dado histórico encontrado. Produza alguns lotes na aba 'Operação' para ver os gráficos!")
         st.info("Nenhum dado histórico encontrado. Produza lotes na aba Operação.")
+
