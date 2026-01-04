@@ -1,23 +1,11 @@
 import streamlit as st
 import pandas as pd
 import time
-from datetime import datetime, timedelta  # Adicionado timedelta para o fuso horário
+from datetime import datetime
 import os
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SaaS Fabrica 4.0", layout="wide")
-
-# --- BARRA LATERAL (NOVO) ---
-with st.sidebar:
-    st.header("🏭 Fabrica 4.0")
-    st.write("Sistema de Controle v1.0")
-    st.markdown("---")
-    st.success("Status: Online")
-    st.markdown("---")
-    # Mostra a data atual ajustada
-    data_hoje = (datetime.now() - timedelta(hours=3)).strftime('%d/%m/%Y')
-    st.caption(f"Data: {data_hoje}")
-    st.caption("Desenvolvido por Você")
 
 # --- 1. A LÓGICA (BACKEND) ---
 class Material:
@@ -43,7 +31,7 @@ def carregar_dados():
     try:
         df_mat = pd.read_excel('dados_fabrica.xlsx', sheet_name='Materiais')
         df_rec = pd.read_excel('dados_fabrica.xlsx', sheet_name='Receitas')
-
+        
         estoque = {}
         produtos_db = {}
 
@@ -54,13 +42,13 @@ def carregar_dados():
             p_nome = row['Nome_Produto']
             m_nome = row['Material_Usado']
             qtd = row['Qtd_Receita_Kg']
-
+            
             if p_nome not in produtos_db:
                 produtos_db[p_nome] = Produto(p_nome)
-
+            
             if m_nome in estoque:
                 produtos_db[p_nome].adicionar_ingrediente(estoque[m_nome], qtd)
-
+                
         return produtos_db, estoque
     except Exception as e:
         return None, str(e)
@@ -68,12 +56,9 @@ def carregar_dados():
 # Função para Salvar no 'Banco de Dados' (CSV)
 def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
     arquivo_db = 'historico_producao.csv'
-
-    # AJUSTE DE FUSO HORÁRIO AQUI (UTC - 3 horas)
-    data_hora_br = (datetime.now() - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
-
+    
     novo_registro = {
-        'Data': [data_hora_br],
+        'Data': [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
         'Operador': [operador],
         'Produto': [produto],
         'Custo_Planejado': [custo_planejado],
@@ -81,9 +66,9 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
         'Diferenca_R$': [diferenca],
         'Status': ["PREJUÍZO" if diferenca < 0 else "LUCRO/ECONOMIA"]
     }
-
+    
     df_novo = pd.DataFrame(novo_registro)
-
+    
     if not os.path.isfile(arquivo_db):
         df_novo.to_csv(arquivo_db, index=False, sep=';')
     else:
@@ -93,7 +78,6 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
 st.title("🏭 Monitor de Produção Inteligente")
 
 # Navegação entre abas
-aba_operacao, aba_gestao = st.tabs(["🔨 Operação (Chão
 aba_operacao, aba_gestao = st.tabs(["🔨 Operação (Chão de Fábrica)", "📈 Gestão (Dashboard)"])
 
 produtos_db, erro = carregar_dados()
@@ -187,11 +171,13 @@ with aba_gestao:
 
         with col_graf1:
             st.subheader("📈 Desempenho por Lote (Linha do Tempo)")
+            # Cria um gráfico de linha mostrando se o lucro subiu ou desceu em cada lote
             st.line_chart(df_hist['Diferenca_R$'])
             st.caption("Valores acima de 0 são Economia. Abaixo de 0 são Prejuízo.")
 
         with col_graf2:
             st.subheader("📊 Custo Planejado vs. Real (Por Produto)")
+            # Agrupa os dados para somar os custos por produto
             df_agrupado = df_hist.groupby('Produto')[['Custo_Planejado', 'Custo_Real']].sum()
             st.bar_chart(df_agrupado)
             st.caption("Comparativo acumulado: Azul Claro (Real) vs Azul Escuro (Planejado)")
