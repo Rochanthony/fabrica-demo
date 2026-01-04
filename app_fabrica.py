@@ -1,11 +1,24 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 import time
 from datetime import datetime
 import os
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SaaS Fabrica 4.0", layout="wide")
+
+# --- SIDEBAR (Mudei apenas isto) ---
+with st.sidebar:
+    st.header("🏭 Painel de Controle")
+    st.success("Status: Online 🟢")
+    
+    # Pega data e hora atual
+    agora = datetime.now()
+    st.write(f"📅 {agora.strftime('%d/%m/%Y')}")
+    st.write(f"⏰ {agora.strftime('%H:%M')}")
+    st.divider()
+# -----------------------------------
 
 # --- 1. A LÓGICA (BACKEND) ---
 class Material:
@@ -188,3 +201,4 @@ with aba_gestao:
         
     else:
         st.info("Nenhum dado histórico encontrado. Produza alguns lotes na aba 'Operação' para ver os gráficos!")
+
