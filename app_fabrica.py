@@ -5,20 +5,25 @@ import time
 from datetime import datetime
 import os
 import sqlite3
+import pytz
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SaaS Fabrica 4.0", layout="wide")
 
-# --- SIDEBAR (Mudei apenas isto) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("🏭 Painel de Controle")
     st.success("Status: Online 🟢")
     
-    # Pega data e hora atual
-    agora = datetime.now()
+    # FORÇAR FUSO HORÁRIO DE SÃO PAULO
+    fuso_br = pytz.timezone('America/Sao_Paulo')
+    agora = datetime.now(fuso_br)  # <--- MUDANÇA AQUI
+    
     st.write(f"📅 {agora.strftime('%d/%m/%Y')}")
     st.write(f"⏰ {agora.strftime('%H:%M')}")
     st.divider()
+    
+  
 # -----------------------------------
 
 # --- 1. A LÓGICA (BACKEND) ---
@@ -93,10 +98,25 @@ def init_db():
 init_db()
 
 def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
-    """Salva o lote dentro do arquivo fabrica.db"""
-    try:
-        conn = sqlite3.connect('fabrica.db')
-        c = conn.cursor()
+    # ... (código de conexão) ...
+    
+    # Definir fuso para salvar
+    fuso_br = pytz.timezone('America/Sao_Paulo')
+    data_hora_br = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S") # <--- CRIAR ESSA VARIÁVEL
+    
+    c.execute('''
+        INSERT INTO historico (data, operador, produto, custo_planejado, custo_real, diferenca, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        data_hora_br,  # <--- USAR A VARIÁVEL AQUI (em vez de datetime.now() direto)
+        operador,
+        produto,
+        custo_planejado,
+        custo_real,
+        diferenca,
+        "PREJUÍZO" if diferenca < 0 else "LUCRO/ECONOMIA"
+    ))
+    # ... (resto do código) ...
         
         # Insere os dados de forma segura
         c.execute('''
@@ -235,3 +255,4 @@ with aba_gestao:
         
     else:
         st.info("Nenhum dado encontrado no Banco SQL. Produza o primeiro lote!")
+
