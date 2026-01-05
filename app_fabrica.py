@@ -14,12 +14,11 @@ with st.sidebar:
     st.header("🏭 Painel de Controle")
     st.success("Status: Online 🟢")
     
-    # FORÇAR FUSO HORÁRIO DE SÃO PAULO
+    # Tenta definir o fuso horário, se falhar usa o padrão
     try:
         fuso_br = pytz.timezone('America/Sao_Paulo')
         agora = datetime.now(fuso_br)
     except:
-        # Fallback caso o pytz falhe
         agora = datetime.now()
     
     st.write(f"📅 {agora.strftime('%d/%m/%Y')}")
@@ -48,7 +47,10 @@ class Produto:
 @st.cache_data
 def carregar_dados():
     try:
-        # Lê a configuração do Excel (Receitas e Materiais)
+        # Lê a configuração do Excel
+        if not os.path.exists('dados_fabrica.xlsx'):
+            return None, "Arquivo 'dados_fabrica.xlsx' não encontrado."
+
         df_mat = pd.read_excel('dados_fabrica.xlsx', sheet_name='Materiais')
         df_rec = pd.read_excel('dados_fabrica.xlsx', sheet_name='Receitas')
         
@@ -79,7 +81,6 @@ def init_db():
     """Cria a tabela no banco de dados se ela não existir"""
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
-    # Criamos colunas para guardar o histórico
     c.execute('''
         CREATE TABLE IF NOT EXISTS historico (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,11 +109,13 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
         fuso_br = pytz.timezone('America/Sao_Paulo')
         data_hora_br = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
         
-        # Insere os dados de forma segura
-        c.execute('''
+        # Insere os dados de forma segura (SQL formatado simples)
+        query = """
             INSERT INTO historico (data, operador, produto, custo_planejado, custo_real, diferenca, status)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
+        """
+        
+        c.execute(query, (
             data_hora_br,
             operador,
             produto,
@@ -134,8 +137,8 @@ st.title("🏭 Monitor de Produção Inteligente")
 aba_operacao, aba_gestao = st.tabs(["🔨 Operação (Chão de Fábrica)", "📈 Gestão (Dashboard)"])
 
 produtos_db, erro = carregar_dados()
-if erro and not produtos_db:
-    st.error(f"Erro no Excel: {erro}")
+if erro:
+    st.error(f"Erro ao carregar dados: {erro}")
     st.stop()
 
 # --- ABA 1: OPERAÇÃO ---
@@ -145,8 +148,12 @@ with aba_operacao:
     with col_config:
         st.subheader("Configuração da OP")
         operador = st.text_input("Nome do Operador", value="João Silva")
-        produto_selecionado = st.selectbox("Produto a Produzir", list(produtos_db.keys()))
-        st.info("👆 Selecione o produto e simule os gastos reais ao lado.")
+        if produtos_db:
+            produto_selecionado = st.selectbox("Produto a Produzir", list(produtos_db.keys()))
+            st.info("👆 Selecione o produto e simule os gastos reais ao lado.")
+        else:
+            st.warning("Nenhum produto cadastrado no Excel.")
+            st.stop()
 
     with col_simulacao:
         st.subheader(f"Execução: {produto_selecionado}")
@@ -202,7 +209,7 @@ with aba_gestao:
     try:
         df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
     except:
-        df_hist = pd.DataFrame() # Se der erro ou banco vazio
+        df_hist = pd.DataFrame() 
     conn.close()
     
     # 2. Verifica se tem dados
