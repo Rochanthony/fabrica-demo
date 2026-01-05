@@ -49,7 +49,7 @@ def carregar_dados():
     try:
         # Lê a configuração do Excel
         if not os.path.exists('dados_fabrica.xlsx'):
-            return None, "Arquivo 'dados_fabrica.xlsx' não encontrado."
+            return None, None, "Arquivo 'dados_fabrica.xlsx' não encontrado."
 
         df_mat = pd.read_excel('dados_fabrica.xlsx', sheet_name='Materiais')
         df_rec = pd.read_excel('dados_fabrica.xlsx', sheet_name='Receitas')
@@ -70,10 +70,13 @@ def carregar_dados():
             
             if m_nome in estoque:
                 produtos_db[p_nome].adicionar_ingrediente(estoque[m_nome], qtd)
-                
-        return produtos_db, estoque
+        
+        # Retorna: Produtos, Estoque, NENHUM ERRO
+        return produtos_db, estoque, None
+        
     except Exception as e:
-        return None, str(e)
+        # Retorna: Nada, Nada, MENSAGEM DE ERRO
+        return None, None, str(e)
 
 # --- BANCO DE DADOS SQL (CONFIGURAÇÃO) ---
 
@@ -106,8 +109,11 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
         c = conn.cursor()
         
         # Define o fuso horário de SP para a data do registro
-        fuso_br = pytz.timezone('America/Sao_Paulo')
-        data_hora_br = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            fuso_br = pytz.timezone('America/Sao_Paulo')
+            data_hora_br = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            data_hora_br = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # Insere os dados de forma segura (SQL formatado simples)
         query = """
@@ -136,9 +142,15 @@ st.title("🏭 Monitor de Produção Inteligente")
 # Navegação entre abas
 aba_operacao, aba_gestao = st.tabs(["🔨 Operação (Chão de Fábrica)", "📈 Gestão (Dashboard)"])
 
-produtos_db, erro = carregar_dados()
-if erro:
-    st.error(f"Erro ao carregar dados: {erro}")
+# CORREÇÃO AQUI: Agora desempacotamos 3 variáveis
+produtos_db, estoque_db, erro_msg = carregar_dados()
+
+if erro_msg:
+    st.error(f"Erro crítico: {erro_msg}")
+    st.stop()
+
+if not produtos_db:
+    st.warning("Nenhum produto encontrado. Verifique a planilha Excel.")
     st.stop()
 
 # --- ABA 1: OPERAÇÃO ---
@@ -148,11 +160,13 @@ with aba_operacao:
     with col_config:
         st.subheader("Configuração da OP")
         operador = st.text_input("Nome do Operador", value="João Silva")
-        if produtos_db:
-            produto_selecionado = st.selectbox("Produto a Produzir", list(produtos_db.keys()))
+        
+        lista_produtos = list(produtos_db.keys())
+        if lista_produtos:
+            produto_selecionado = st.selectbox("Produto a Produzir", lista_produtos)
             st.info("👆 Selecione o produto e simule os gastos reais ao lado.")
         else:
-            st.warning("Nenhum produto cadastrado no Excel.")
+            st.error("Lista de produtos vazia.")
             st.stop()
 
     with col_simulacao:
