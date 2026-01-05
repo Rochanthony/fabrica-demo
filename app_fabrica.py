@@ -4,6 +4,7 @@ from datetime import datetime
 import time
 from datetime import datetime
 import os
+import sqlite3
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SaaS Fabrica 4.0", layout="wide")
@@ -66,26 +67,55 @@ def carregar_dados():
     except Exception as e:
         return None, str(e)
 
-# Função para Salvar no 'Banco de Dados' (CSV)
+# --- BANCO DE DADOS SQL (NOVO) ---
+
+def init_db():
+    """Cria a tabela no banco de dados se ela não existir"""
+    conn = sqlite3.connect('fabrica.db')
+    c = conn.cursor()
+    # Criamos colunas para guardar exatamente o que você já usava
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS historico (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data TEXT,
+            operador TEXT,
+            produto TEXT,
+            custo_planejado REAL,
+            custo_real REAL,
+            diferenca REAL,
+            status TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Inicia o banco assim que o código roda
+init_db()
+
 def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
-    arquivo_db = 'historico_producao.csv'
-    
-    novo_registro = {
-        'Data': [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-        'Operador': [operador],
-        'Produto': [produto],
-        'Custo_Planejado': [custo_planejado],
-        'Custo_Real': [custo_real],
-        'Diferenca_R$': [diferenca],
-        'Status': ["PREJUÍZO" if diferenca < 0 else "LUCRO/ECONOMIA"]
-    }
-    
-    df_novo = pd.DataFrame(novo_registro)
-    
-    if not os.path.isfile(arquivo_db):
-        df_novo.to_csv(arquivo_db, index=False, sep=';')
-    else:
-        df_novo.to_csv(arquivo_db, mode='a', header=False, index=False, sep=';')
+    """Salva o lote dentro do arquivo fabrica.db"""
+    try:
+        conn = sqlite3.connect('fabrica.db')
+        c = conn.cursor()
+        
+        # Insere os dados de forma segura
+        c.execute('''
+            INSERT INTO historico (data, operador, produto, custo_planejado, custo_real, diferenca, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            operador,
+            produto,
+            custo_planejado,
+            custo_real,
+            diferenca,
+            "PREJUÍZO" if diferenca < 0 else "LUCRO/ECONOMIA"
+        ))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Erro ao salvar no banco: {e}")
 
 # --- 2. O VISUAL (FRONTEND) ---
 st.title("🏭 Monitor de Produção Inteligente")
@@ -153,52 +183,55 @@ with aba_operacao:
             time.sleep(1)
             st.rerun()
 
-# --- ABA 2: GESTÃO (AGORA COM GRÁFICOS) ---
+# --- ABA 2: GESTÃO (ATUALIZADO PARA SQL) ---
 with aba_gestao:
-    st.header("Histórico Gerencial")
+    st.header("Histórico Gerencial (SQL)")
     
-    if os.path.isfile('historico_producao.csv'):
-        df_hist = pd.read_csv('historico_producao.csv', sep=';')
+    # 1. Tenta ler do Banco de Dados
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
+    except:
+        df_hist = pd.DataFrame() # Se der erro ou banco vazio
+    conn.close()
+    
+    # 2. Verifica se tem dados
+    if not df_hist.empty:
         
         # Filtros
-        filtro_prod = st.multiselect("Filtrar por Produto", df_hist['Produto'].unique())
+        filtro_prod = st.multiselect("Filtrar por Produto", df_hist['produto'].unique())
         if filtro_prod:
-            df_hist = df_hist[df_hist['Produto'].isin(filtro_prod)]
+            df_hist = df_hist[df_hist['produto'].isin(filtro_prod)]
         
-        # 1. INDICADORES NO TOPO
+        # --- INDICADORES ---
         total_lotes = len(df_hist)
-        total_prejuizo = df_hist[df_hist['Diferenca_R$'] < 0]['Diferenca_R$'].sum()
-        total_economia = df_hist[df_hist['Diferenca_R$'] > 0]['Diferenca_R$'].sum()
-        saldo_geral = df_hist['Diferenca_R$'].sum()
+        saldo_geral = df_hist['diferenca'].sum()
+        total_prejuizo = df_hist[df_hist['diferenca'] < 0]['diferenca'].sum()
+        total_economia = df_hist[df_hist['diferenca'] > 0]['diferenca'].sum()
 
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         kpi1.metric("Lotes Produzidos", total_lotes)
-        kpi2.metric("Desperdício Total", f"R$ {total_prejuizo:.2f}")
-        kpi3.metric("Economia Total", f"R$ {total_economia:.2f}")
-        kpi4.metric("Saldo do Período", f"R$ {saldo_geral:.2f}", delta=f"{saldo_geral:.2f}")
+        kpi2.metric("Desperdício", f"R$ {total_prejuizo:.2f}")
+        kpi3.metric("Economia", f"R$ {total_economia:.2f}")
+        kpi4.metric("Saldo Geral", f"R$ {saldo_geral:.2f}", delta=f"{saldo_geral:.2f}")
 
         st.markdown("---")
 
-        # 2. GRÁFICOS LADO A LADO
+        # --- GRÁFICOS ---
         col_graf1, col_graf2 = st.columns(2)
 
         with col_graf1:
-            st.subheader("📈 Desempenho por Lote (Linha do Tempo)")
-            # Cria um gráfico de linha mostrando se o lucro subiu ou desceu em cada lote
-            st.line_chart(df_hist['Diferenca_R$'])
-            st.caption("Valores acima de 0 são Economia. Abaixo de 0 são Prejuízo.")
+            st.subheader("📈 Tendência Financeira")
+            st.line_chart(df_hist['diferenca'])
 
         with col_graf2:
-            st.subheader("📊 Custo Planejado vs. Real (Por Produto)")
-            # Agrupa os dados para somar os custos por produto
-            df_agrupado = df_hist.groupby('Produto')[['Custo_Planejado', 'Custo_Real']].sum()
+            st.subheader("📊 Planejado vs Real")
+            df_agrupado = df_hist.groupby('produto')[['custo_planejado', 'custo_real']].sum()
             st.bar_chart(df_agrupado)
-            st.caption("Comparativo acumulado: Azul Claro (Real) vs Azul Escuro (Planejado)")
 
         st.markdown("---")
-        st.subheader("📋 Detalhamento dos Registros")
+        st.subheader("📋 Tabela Completa")
         st.dataframe(df_hist, use_container_width=True)
         
     else:
-        st.info("Nenhum dado histórico encontrado. Produza alguns lotes na aba 'Operação' para ver os gráficos!")
-
+        st.info("Nenhum dado encontrado no Banco SQL. Produza o primeiro lote!")
