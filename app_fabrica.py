@@ -108,9 +108,11 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
     try:
         conn = sqlite3.connect('fabrica.db')
         c = conn.cursor()
+        # CORREÇÃO DE FUSO HORÁRIO AQUI
         try: fuso = pytz.timezone('America/Sao_Paulo')
         except: fuso = pytz.utc
         data_hora = datetime.now(fuso).strftime("%Y-%m-%d %H:%M:%S")
+        
         status = "PREJUÍZO" if diferenca < 0 else "LUCRO"
         c.execute("INSERT INTO historico (data, operador, produto, custo_planejado, custo_real, diferenca, status) VALUES (?,?,?,?,?,?,?)",
                   (data_hora, operador, produto, custo_planejado, custo_real, diferenca, status))
@@ -193,10 +195,16 @@ popular_dados_iniciais()
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("🏭 Painel de Controle")
-    agora = datetime.now()
+    # CORREÇÃO DE FUSO HORÁRIO NO RELÓGIO
+    try:
+        fuso_br = pytz.timezone('America/Sao_Paulo')
+        agora = datetime.now(fuso_br)
+    except:
+        agora = datetime.now()
+        
     st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
     st.divider()
-    st.info("Sistema v5.4 - Estável")
+    st.info("Sistema v5.4 - Estável & BR Time")
     if st.button("🔴 RESETAR BANCO DE DADOS", help="Use se der erro de carregamento"):
         try:
             os.remove("fabrica.db")
@@ -423,4 +431,23 @@ with aba_cadastros:
 
         if produto_ativo:
             st.markdown(f"**Gerenciando: {produto_ativo}**")
-            df_receita_atual = get_receita
+            df_receita_atual = get_receita_produto(produto_ativo)
+            if not df_receita_atual.empty:
+                st.dataframe(df_receita_atual, use_container_width=True, hide_index=True)
+            else:
+                st.info("Receita vazia.")
+            
+            st.divider()
+            with st.form("add_ing_form"):
+                c1, c2 = st.columns(2)
+                # Garante lista limpa para o selectbox
+                mats_disponiveis = get_materiais_db()['nome'].astype(str).tolist()
+                
+                ing_sel = c1.selectbox("Ingrediente", mats_disponiveis)
+                qtd_sel = c2.number_input("Qtd (Kg)", min_value=0.1, step=0.1)
+                
+                if st.form_submit_button("Salvar Ingrediente"):
+                    if ing_sel and qtd_sel > 0:
+                        ok, m = adicionar_ingrediente(produto_ativo, ing_sel, qtd_sel)
+                        if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
+                        else: st.error(m)
