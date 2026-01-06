@@ -8,7 +8,7 @@ import pytz
 from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS Fabrica 5.2", layout="wide")
+st.set_page_config(page_title="SaaS Fabrica 5.3", layout="wide")
 
 # --- 1. GERENCIAMENTO DE BANCO DE DADOS ---
 def init_db():
@@ -87,6 +87,7 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
         return data_hora
     except Exception as e: return None
 
+# --- NOVAS FUNÇÕES DE EDIÇÃO ---
 def cadastrar_material(nome, custo, estoque):
     conn = sqlite3.connect('fabrica.db')
     try:
@@ -94,10 +95,26 @@ def cadastrar_material(nome, custo, estoque):
         conn.commit(); conn.close(); return True, "Sucesso"
     except Exception as e: conn.close(); return False, str(e)
 
+def atualizar_material_db(nome, novo_custo, novo_estoque):
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        conn.execute("UPDATE materiais SET custo = ?, estoque = ? WHERE nome = ?", (novo_custo, novo_estoque, nome))
+        conn.commit(); conn.close(); return True, "Atualizado"
+    except Exception as e: conn.close(); return False, str(e)
+
 def adicionar_ingrediente(produto, ingrediente, qtd):
     conn = sqlite3.connect('fabrica.db')
     try:
-        conn.execute("INSERT INTO receitas (nome_produto, ingrediente, qtd_teorica) VALUES (?, ?, ?)", (produto, ingrediente, qtd))
+        # Verifica se já existe para atualizar ou inserir novo
+        cursor = conn.cursor()
+        cursor.execute("SELECT count(*) FROM receitas WHERE nome_produto=? AND ingrediente=?", (produto, ingrediente))
+        exists = cursor.fetchone()[0]
+        
+        if exists > 0:
+            cursor.execute("UPDATE receitas SET qtd_teorica = ? WHERE nome_produto=? AND ingrediente=?", (qtd, produto, ingrediente))
+        else:
+            cursor.execute("INSERT INTO receitas (nome_produto, ingrediente, qtd_teorica) VALUES (?, ?, ?)", (produto, ingrediente, qtd))
+        
         conn.commit(); conn.close(); return True, "Sucesso"
     except Exception as e: conn.close(); return False, str(e)
 
@@ -145,7 +162,7 @@ with st.sidebar:
     agora = datetime.now()
     st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
     st.divider()
-    st.info("Sistema v5.2 - Cores Inteligentes")
+    st.info("Sistema v5.3 - Edição Total")
 
 st.title("🏭 Fabrica 4.0 - ERP Industrial")
 aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
@@ -186,124 +203,4 @@ with aba_operacao:
                 dif = custo_planejado - custo_real
                 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
                 col_kpi1.metric("Custo Meta", f"R$ {custo_planejado:.2f}")
-                col_kpi2.metric("Custo Real", f"R$ {custo_real:.2f}", delta=f"{dif:.2f}")
-                
-                if dif >= 0: col_kpi3.success(f"✅ ECONOMIA: R$ {dif:.2f}")
-                else: col_kpi3.error(f"🚨 PREJUÍZO: R$ {abs(dif):.2f}")
-                
-                if st.button("💾 FINALIZAR ORDEM E GERAR PDF", type="primary"):
-                    data_salva = salvar_historico(operador, produto_selecionado, custo_planejado, custo_real, dif)
-                    ok, msg = baixar_estoque(consumo_real)
-                    if ok:
-                        st.toast("Sucesso! Lote registrado.", icon="✅")
-                        pdf_bytes = gerar_pdf_lote(data_salva, operador, produto_selecionado, consumo_real, custo_planejado, custo_real, dif)
-                        st.markdown("### 📄 Relatório Pronto:")
-                        st.download_button("Baixar PDF Assinado", data=pdf_bytes, file_name=f"Relatorio_{produto_selecionado}.pdf", mime="application/pdf")
-                    else: st.error(msg)
-            else: st.warning("Produto sem receita.")
-        else: st.info("Cadastre produtos primeiro.")
-
-# --- ABA 2: ESTOQUE (MODIFICADA: BARRAS HORIZONTAIS COM CORES) ---
-with aba_estoque:
-    st.header("Monitoramento de Tanques")
-    df_estoque = get_materiais_db()
-    
-    if not df_estoque.empty:
-        # Layout em colunas para os Cards
-        st.subheader("Níveis em Tempo Real")
-        
-        # Consideramos 2000kg como a capacidade máxima do tanque para calcular a %
-        CAPACIDADE_MAXIMA = 2000.0
-        MINIMO_CRITICO = 300.0
-        
-        # Grid de cards
-        cols = st.columns(3) # Exibe em 3 colunas
-        
-        for i, row in df_estoque.iterrows():
-            col_atual = cols[i % 3] # Distribui entre as 3 colunas
-            
-            nome = row['nome']
-            estoque_atual = row['estoque']
-            porcentagem = (estoque_atual / CAPACIDADE_MAXIMA) * 100
-            if porcentagem > 100: porcentagem = 100
-            
-            # Lógica de Cores
-            if estoque_atual < MINIMO_CRITICO:
-                cor_barra = "#ff4b4b" # Vermelho
-                texto_status = "CRÍTICO"
-            elif estoque_atual < (CAPACIDADE_MAXIMA * 0.5):
-                cor_barra = "#ffa421" # Amarelo/Laranja
-                texto_status = "ATENÇÃO"
-            else:
-                cor_barra = "#21c354" # Verde
-                texto_status = "OK"
-            
-            # HTML/CSS para a barra customizada
-            with col_atual:
-                st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-bottom: 10px; background-color: #262730;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <span style="font-weight: bold; color: white;">{nome}</span>
-                        <span style="color: {cor_barra}; font-weight: bold;">{estoque_atual:.1f} kg</span>
-                    </div>
-                    <div style="width: 100%; background-color: #444; border-radius: 4px; height: 15px;">
-                        <div style="width: {porcentagem}%; background-color: {cor_barra}; height: 15px; border-radius: 4px;"></div>
-                    </div>
-                    <div style="font-size: 0.8em; color: #aaa; margin-top: 5px;">Status: {texto_status}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        st.divider()
-        st.subheader("Detalhamento (Tabela)")
-        st.dataframe(df_estoque[['nome', 'custo', 'estoque']], use_container_width=True, hide_index=True)
-        
-    else: 
-        st.info("Estoque vazio.")
-
-# --- ABA 3: GESTÃO ---
-with aba_gestao:
-    st.header("Dashboard Gerencial")
-    conn = sqlite3.connect('fabrica.db')
-    try: df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
-    except: df_hist = pd.DataFrame()
-    conn.close()
-    
-    if not df_hist.empty:
-        k1, k2 = st.columns(2)
-        k1.metric("Total Lotes", len(df_hist))
-        k2.metric("Saldo Geral", f"R$ {df_hist['diferenca'].sum():.2f}")
-        st.divider()
-        g1, g2 = st.columns(2)
-        with g1:
-            st.subheader("Desempenho Financeiro")
-            st.line_chart(df_hist['diferenca'])
-        with g2:
-            st.subheader("Meta vs Realizado")
-            df_chart = df_hist.groupby('produto')[['custo_planejado', 'custo_real']].sum()
-            st.bar_chart(df_chart, stack=False)
-        st.dataframe(df_hist.sort_values(by='id', ascending=False), use_container_width=True)
-    else:
-        st.info("ℹ️ Nenhum dado de produção encontrado.")
-
-# --- ABA 4: CADASTROS ---
-with aba_cadastros:
-    st.header("⚙️ Configurações")
-    t1, t2 = st.tabs(["Material", "Receita"])
-    with t1:
-        with st.form("new_mat"):
-            n = st.text_input("Nome"); c = st.number_input("Custo"); e = st.number_input("Estoque")
-            if st.form_submit_button("Salvar") and n:
-                ok, m = cadastrar_material(n, c, e)
-                if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
-                else: st.error(m)
-    with t2:
-        prod = st.text_input("Nome do Produto (Existente ou Novo)")
-        mats = get_materiais_db()['nome'].unique() if not get_materiais_db().empty else []
-        if prod:
-            c1, c2, c3 = st.columns([2,1,1])
-            ing = c1.selectbox("Ingrediente", mats)
-            qtd = c2.number_input("Qtd (Kg)")
-            if c3.button("Add") and qtd > 0:
-                adicionar_ingrediente(prod, ing, qtd)
-                st.success("Adicionado!"); time.sleep(0.5); st.rerun()
-            st.table(get_receita_produto(prod))
+                col_kpi2.metric("C
