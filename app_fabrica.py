@@ -5,87 +5,42 @@ import time
 import os
 import sqlite3
 import pytz
+from fpdf import FPDF # Nova biblioteca para o PDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS Fabrica 4.1", layout="wide")
+st.set_page_config(page_title="SaaS Fabrica 5.0", layout="wide")
 
 # --- 1. GERENCIAMENTO DE BANCO DE DADOS ---
-
 def init_db():
-    """Inicializa o banco com tabelas completas para substituir o Excel"""
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
-    
-    # 1. Tabela Histórico
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS historico (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT,
-            operador TEXT,
-            produto TEXT,
-            custo_planejado REAL,
-            custo_real REAL,
-            diferenca REAL,
-            status TEXT
-        )
-    ''')
-    
-    # 2. Tabela Materiais
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS materiais (
-            nome TEXT PRIMARY KEY,
-            custo REAL,
-            estoque REAL
-        )
-    ''')
-
-    # 3. Tabela Receitas
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS receitas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome_produto TEXT,
-            ingrediente TEXT,
-            qtd_teorica REAL,
-            FOREIGN KEY(ingrediente) REFERENCES materiais(nome)
-        )
-    ''')
-    
+    c.execute('''CREATE TABLE IF NOT EXISTS historico (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, operador TEXT,
+            produto TEXT, custo_planejado REAL, custo_real REAL, diferenca REAL, status TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS materiais (
+            nome TEXT PRIMARY KEY, custo REAL, estoque REAL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS receitas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, nome_produto TEXT, ingrediente TEXT,
+            qtd_teorica REAL, FOREIGN KEY(ingrediente) REFERENCES materiais(nome))''')
     conn.commit()
     conn.close()
 
 def popular_dados_iniciais():
-    """Popula o banco com dados de teste se estiver vazio"""
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
-    
-    # Verifica se tem materiais
     try:
         c.execute("SELECT count(*) FROM materiais")
         if c.fetchone()[0] == 0:
-            # Cria materiais padrão
-            materiais = [
-                ('Resina', 15.0, 1000.0),
-                ('Solvente', 8.5, 800.0),
-                ('Pigmento', 25.0, 200.0),
-                ('Aditivo', 45.0, 100.0)
-            ]
-            c.executemany("INSERT INTO materiais (nome, custo, estoque) VALUES (?, ?, ?)", materiais)
-            
-            # Cria uma receita padrão (Tinta Base)
-            receita = [
-                ('Tinta Base', 'Resina', 60.0),
-                ('Tinta Base', 'Solvente', 30.0),
-                ('Tinta Base', 'Pigmento', 10.0)
-            ]
+            materiais = [('Resina', 15.0, 1000.0), ('Solvente', 8.5, 800.0), 
+                         ('Pigmento', 25.0, 200.0), ('Aditivo', 45.0, 100.0)]
+            c.executemany("INSERT INTO materiais VALUES (?, ?, ?)", materiais)
+            receita = [('Tinta Base', 'Resina', 60.0), ('Tinta Base', 'Solvente', 30.0), ('Tinta Base', 'Pigmento', 10.0)]
             c.executemany("INSERT INTO receitas (nome_produto, ingrediente, qtd_teorica) VALUES (?, ?, ?)", receita)
             conn.commit()
-    except:
-        pass
-    finally:
-        conn.close()
+    except: pass
+    finally: conn.close()
 
-# --- FUNÇÕES DE OPERAÇÃO ---
-
+# --- FUNÇÕES DE OPERAÇÃO (DB) ---
 def get_materiais_db():
     conn = sqlite3.connect('fabrica.db')
     df = pd.read_sql("SELECT * FROM materiais", conn)
@@ -94,21 +49,17 @@ def get_materiais_db():
 
 def get_receita_produto(nome_produto):
     conn = sqlite3.connect('fabrica.db')
-    query = """
-    SELECT r.ingrediente, r.qtd_teorica, m.custo 
-    FROM receitas r
-    JOIN materiais m ON r.ingrediente = m.nome
-    WHERE r.nome_produto = ?
-    """
+    query = """SELECT r.ingrediente, r.qtd_teorica, m.custo FROM receitas r
+               JOIN materiais m ON r.ingrediente = m.nome WHERE r.nome_produto = ?"""
     df = pd.read_sql_query(query, conn, params=(nome_produto,))
     conn.close()
     return df
 
 def get_lista_produtos():
     conn = sqlite3.connect('fabrica.db')
-    produtos = pd.read_sql("SELECT DISTINCT nome_produto FROM receitas", conn)
+    df = pd.read_sql("SELECT DISTINCT nome_produto FROM receitas", conn)
     conn.close()
-    return produtos['nome_produto'].tolist()
+    return df['nome_produto'].tolist()
 
 def baixar_estoque(consumo_real):
     conn = sqlite3.connect('fabrica.db')
@@ -118,271 +69,223 @@ def baixar_estoque(consumo_real):
             c.execute("UPDATE materiais SET estoque = estoque - ? WHERE nome = ?", (qtd, material))
         conn.commit()
         return True, "Estoque atualizado!"
-    except Exception as e:
-        return False, str(e)
-    finally:
-        conn.close()
+    except Exception as e: return False, str(e)
+    finally: conn.close()
 
 def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
     try:
         conn = sqlite3.connect('fabrica.db')
         c = conn.cursor()
+        fuso = pytz.timezone('America/Sao_Paulo')
+        data_hora = datetime.now(fuso).strftime("%Y-%m-%d %H:%M:%S")
+        status = "PREJUÍZO" if diferenca < 0 else "LUCRO"
+        c.execute("INSERT INTO historico (data, operador, produto, custo_planejado, custo_real, diferenca, status) VALUES (?,?,?,?,?,?,?)",
+                  (data_hora, operador, produto, custo_planejado, custo_real, diferenca, status))
+        conn.commit()
+        conn.close()
+        return data_hora # Retorna a data para usar no PDF
+    except Exception as e: return None
+
+def cadastrar_material(nome, custo, estoque):
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        conn.execute("INSERT INTO materiais VALUES (?, ?, ?)", (nome, custo, estoque))
+        conn.commit(); conn.close(); return True, "Sucesso"
+    except Exception as e: conn.close(); return False, str(e)
+
+def adicionar_ingrediente(produto, ingrediente, qtd):
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        conn.execute("INSERT INTO receitas (nome_produto, ingrediente, qtd_teorica) VALUES (?, ?, ?)", (produto, ingrediente, qtd))
+        conn.commit(); conn.close(); return True, "Sucesso"
+    except Exception as e: conn.close(); return False, str(e)
+
+# --- FUNÇÃO GERADORA DE PDF ---
+def gerar_pdf_lote(data, operador, produto, itens_realizados, custo_plan, custo_real, diferenca):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Cabeçalho
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, f"RELATÓRIO DE PRODUÇÃO - {produto}", ln=True, align='C')
+    pdf.ln(10)
+    
+    # Informações Gerais
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(0, 10, f"Data/Hora: {data}", ln=True)
+    pdf.cell(0, 10, f"Operador Responsável: {operador}", ln=True)
+    pdf.ln(5)
+    
+    # Tabela de Materiais
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(80, 10, "Material", 1)
+    pdf.cell(60, 10, "Qtd Real (Kg)", 1)
+    pdf.ln()
+    
+    pdf.set_font("Arial", '', 12)
+    for mat, qtd in itens_realizados.items():
+        # Encode latin-1 para lidar com acentos básicos se necessário, ou usar string simples
         try:
-            fuso_br = pytz.timezone('America/Sao_Paulo')
-            data_hora = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
+            mat_txt = mat.encode('latin-1', 'replace').decode('latin-1')
         except:
-            data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            mat_txt = mat
+        pdf.cell(80, 10, mat_txt, 1)
+        pdf.cell(60, 10, f"{qtd:.2f}", 1)
+        pdf.ln()
         
-        c.execute('''
-            INSERT INTO historico (data, operador, produto, custo_planejado, custo_real, diferenca, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (data_hora, operador, produto, custo_planejado, custo_real, diferenca, 
-              "PREJUÍZO" if diferenca < 0 else "LUCRO/ECONOMIA"))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        st.error(f"Erro ao salvar: {e}")
-
-# --- FUNÇÕES DE CADASTRO ---
-def cadastrar_material(nome, custo, estoque_inicial):
-    conn = sqlite3.connect('fabrica.db')
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO materiais (nome, custo, estoque) VALUES (?, ?, ?)", (nome, custo, estoque_inicial))
-        conn.commit()
-        return True, "Material cadastrado!"
-    except sqlite3.IntegrityError:
-        return False, "Material já existe!"
-    except Exception as e:
-        return False, str(e)
-    finally:
-        conn.close()
-
-def adicionar_ingrediente_receita(produto, ingrediente, qtd):
-    conn = sqlite3.connect('fabrica.db')
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO receitas (nome_produto, ingrediente, qtd_teorica) VALUES (?, ?, ?)", (produto, ingrediente, qtd))
-        conn.commit()
-        return True, "Ingrediente adicionado!"
-    except Exception as e:
-        return False, str(e)
-    finally:
-        conn.close()
+    pdf.ln(10)
+    
+    # Resultados Financeiros
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, "Resumo Financeiro", ln=True)
+    
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(0, 10, f"Custo Planejado: R$ {custo_plan:.2f}", ln=True)
+    pdf.cell(0, 10, f"Custo Realizado: R$ {custo_real:.2f}", ln=True)
+    
+    # Destaque do Resultado
+    if diferenca >= 0:
+        pdf.set_text_color(0, 128, 0) # Verde
+        status = f"ECONOMIA: R$ {diferenca:.2f}"
+    else:
+        pdf.set_text_color(255, 0, 0) # Vermelho
+        status = f"DESVIO (PREJUÍZO): R$ {diferenca:.2f}"
+        
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, status, ln=True)
+    
+    # Retorna o binário do PDF
+    return pdf.output(dest='S').encode('latin-1')
 
 # --- INICIALIZAÇÃO ---
 init_db()
 popular_dados_iniciais()
 
-# --- SIDEBAR (VOLTOU!) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("🏭 Painel de Controle")
-    try:
-        agora = datetime.now(pytz.timezone('America/Sao_Paulo'))
-    except:
-        agora = datetime.now()
+    agora = datetime.now()
     st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
     st.divider()
-    st.info("Sistema v4.1 - Integrado SQL")
+    st.info("Sistema v5.0 - PDF Report")
 
-# --- FRONTEND PRINCIPAL ---
-st.title("🏭 Fabrica 4.0 - ERP Integrado")
+# --- APP PRINCIPAL ---
+st.title("🏭 Fabrica 4.0 - ERP Industrial")
 aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
-# --- ABA 1: PRODUÇÃO ---
+# --- ABA 1: PRODUÇÃO (COM PDF) ---
 with aba_operacao:
     col_config, col_simulacao = st.columns([1, 2])
-    
     lista_produtos = get_lista_produtos()
     
     with col_config:
         st.subheader("Setup")
         operador = st.text_input("Operador", value="João Silva")
-        
-        if lista_produtos:
-            produto_selecionado = st.selectbox("Selecione o Produto", lista_produtos)
-        else:
-            st.warning("Nenhum produto cadastrado. Vá em 'Cadastros'.")
-            # Não usamos stop() aqui para não quebrar as outras abas
-            produto_selecionado = None
+        produto_selecionado = st.selectbox("Selecione o Produto", lista_produtos) if lista_produtos else None
 
     with col_simulacao:
         if produto_selecionado:
             st.subheader(f"Ordem: {produto_selecionado}")
-            
-            # Puxa a receita do banco
             df_receita = get_receita_produto(produto_selecionado)
             
-            if df_receita.empty:
-                st.warning("Este produto não tem ingredientes cadastrados.")
-            else:
+            if not df_receita.empty:
                 consumo_real = {}
                 custo_planejado = 0
                 custo_real = 0
                 
-                # Loop pelos ingredientes
-                for index, row in df_receita.iterrows():
-                    ingrediente = row['ingrediente']
-                    qtd_meta = row['qtd_teorica']
-                    custo_unit = row['custo']
+                # Formulário Dinâmico
+                with st.form("form_producao"):
+                    for index, row in df_receita.iterrows():
+                        ingrediente = row['ingrediente']
+                        qtd_meta = row['qtd_teorica']
+                        custo_unit = row['custo']
+                        
+                        custo_planejado += (qtd_meta * custo_unit)
+                        
+                        c1, c2 = st.columns([2, 1])
+                        c1.markdown(f"**{ingrediente}** (Meta: {qtd_meta}kg)")
+                        val = c2.number_input(f"Real ({ingrediente})", value=float(qtd_meta), step=0.1)
+                        
+                        custo_real += (val * custo_unit)
+                        consumo_real[ingrediente] = val
                     
-                    custo_item_meta = qtd_meta * custo_unit
-                    custo_planejado += custo_item_meta
-                    
-                    c1, c2 = st.columns([2, 1])
-                    c1.markdown(f"**{ingrediente}** (Meta: {qtd_meta}kg)")
-                    
-                    qtd_digitada = c2.number_input(
-                        f"Real ({ingrediente})", 
-                        value=float(qtd_meta), step=0.1, key=f"in_{ingrediente}"
-                    )
-                    
-                    custo_real += (qtd_digitada * custo_unit)
-                    consumo_real[ingrediente] = qtd_digitada
+                    submitted = st.form_submit_button("✅ CALCULAR E FINALIZAR")
                 
-                st.divider()
-                
-                dif = custo_planejado - custo_real
-                k1, k2, k3 = st.columns(3)
-                k1.metric("Planejado", f"R$ {custo_planejado:.2f}")
-                k2.metric("Realizado", f"R$ {custo_real:.2f}", delta=f"{dif:.2f}")
-                
-                if dif >= 0:
-                    k3.success("✅ OK")
-                else:
-                    k3.error("🚨 DESVIO")
+                if submitted:
+                    dif = custo_planejado - custo_real
+                    # 1. Salva no DB
+                    data_salva = salvar_historico(operador, produto_selecionado, custo_planejado, custo_real, dif)
+                    # 2. Baixa Estoque
+                    ok, msg = baixar_estoque(consumo_real)
                     
-                if st.button("💾 ENCERRAR ORDEM", type="primary"):
-                    salvar_historico(operador, produto_selecionado, custo_planejado, custo_real, dif)
-                    sucesso, msg = baixar_estoque(consumo_real)
-                    if sucesso:
-                        st.toast("Produção registrada e Estoque baixado!", icon="🏭")
-                        time.sleep(1.5)
-                        st.rerun()
+                    if ok:
+                        st.success("Produção Finalizada com Sucesso!")
+                        
+                        # 3. Gera o PDF
+                        pdf_bytes = gerar_pdf_lote(data_salva, operador, produto_selecionado, consumo_real, custo_planejado, custo_real, dif)
+                        
+                        # Botão de Download
+                        col_d1, col_d2 = st.columns(2)
+                        col_d1.metric("Resultado Financeiro", f"R$ {dif:.2f}")
+                        col_d2.download_button(
+                            label="📄 Baixar Relatório PDF",
+                            data=pdf_bytes,
+                            file_name=f"relatorio_{produto_selecionado}_{int(time.time())}.pdf",
+                            mime="application/pdf"
+                        )
+                        
+                        # Atualiza a página após baixar (opcional, ou deixa o usuário ver o botão)
+                        st.balloons()
                     else:
                         st.error(msg)
+            else:
+                st.warning("Produto sem receita.")
         else:
-            st.info("👈 Cadastre produtos na aba 'Cadastros' primeiro.")
+            st.info("Cadastre produtos primeiro.")
 
 # --- ABA 2: ESTOQUE ---
 with aba_estoque:
     st.header("Monitoramento de Tanques")
-    
     df_estoque = get_materiais_db()
-    
     if not df_estoque.empty:
-        # Alerta
         criticos = df_estoque[df_estoque['estoque'] < 300]
-        if not criticos.empty:
-            st.error(f"🚨 {len(criticos)} materiais abaixo do nível mínimo!")
-            
-        st.dataframe(
-            df_estoque[['nome', 'custo', 'estoque']],
-            use_container_width=True,
-            column_config={
-                "estoque": st.column_config.ProgressColumn(
-                    "Estoque (Kg)", format="%.1f kg", min_value=0, max_value=2000
-                ),
-                "custo": st.column_config.NumberColumn("Custo/Kg", format="R$ %.2f")
-            },
-            hide_index=True
-        )
-    else:
-        st.info("Nenhum material cadastrado.")
+        if not criticos.empty: st.error(f"🚨 {len(criticos)} materiais críticos!")
+        st.dataframe(df_estoque[['nome', 'custo', 'estoque']], use_container_width=True, hide_index=True)
+    else: st.info("Vazio.")
 
-# --- ABA 3: GESTÃO (CORRIGIDA) ---
+# --- ABA 3: GESTÃO ---
 with aba_gestao:
-    st.header("KPIs Financeiros")
+    st.header("Dashboard")
     conn = sqlite3.connect('fabrica.db')
-    try:
-        df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
-    except:
-        df_hist = pd.DataFrame()
+    try: df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
+    except: df_hist = pd.DataFrame()
     conn.close()
     
     if not df_hist.empty:
-        kp1, kp2, kp3 = st.columns(3)
-        kp1.metric("Ordens Produzidas", len(df_hist))
-        kp2.metric("Performance Financeira", f"R$ {df_hist['diferenca'].sum():.2f}")
-        
-        # --- CORREÇÃO DO ERRO DA DATA ---
-        data_max = pd.to_datetime(df_hist['data']).max()
-        # Verifica se a data é válida antes de formatar
-        if pd.isnull(data_max):
-             str_data = "-"
-        else:
-             str_data = data_max.strftime('%d/%m %H:%M')
-        
-        kp3.metric("Último Lote", str_data)
-        # --------------------------------
-        
-        st.dataframe(df_hist, use_container_width=True)
-    else:
-        st.info("Sem dados históricos (Produza algo na aba 1 para ver os gráficos).")
+        k1, k2 = st.columns(2)
+        k1.metric("Total Lotes", len(df_hist))
+        k2.metric("Saldo Geral", f"R$ {df_hist['diferenca'].sum():.2f}")
+        st.dataframe(df_hist.sort_values(by='id', ascending=False), use_container_width=True)
 
 # --- ABA 4: CADASTROS ---
 with aba_cadastros:
-    st.header("⚙️ Central de Cadastros")
-    
-    tab_mat, tab_rec = st.tabs(["Novo Material", "Nova Receita"])
-    
-    # 1. Cadastro de Materiais
-    with tab_mat:
-        st.caption("Cadastre matérias-primas que chegam no estoque.")
-        with st.form("form_material"):
-            novo_nome = st.text_input("Nome do Material (Ex: Resina Epóxi)")
-            novo_custo = st.number_input("Custo por Kg (R$)", min_value=0.01)
-            novo_estoque = st.number_input("Estoque Inicial (Kg)", min_value=0.0)
-            
-            if st.form_submit_button("💾 Salvar Material"):
-                if novo_nome:
-                    ok, msg = cadastrar_material(novo_nome, novo_custo, novo_estoque)
-                    if ok:
-                        st.success(f"Material '{novo_nome}' cadastrado!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error(msg)
-                else:
-                    st.warning("Preencha o nome.")
-
-    # 2. Cadastro de Receitas
-    with tab_rec:
-        st.caption("Crie produtos combinando materiais existentes.")
-        
-        # Passo 1: Definir ou Escolher Produto
-        col_p1, col_p2 = st.columns(2)
-        prod_existentes = get_lista_produtos()
-        
-        with col_p1:
-            prod_novo = st.text_input("Criar Novo Produto (Nome)")
-        with col_p2:
-            prod_sel = st.selectbox("Ou editar existente:", ["Selecione..."] + prod_existentes)
-        
-        produto_ativo = prod_novo if prod_novo else (prod_sel if prod_sel != "Selecione..." else None)
-        
-        if produto_ativo:
-            st.divider()
-            st.subheader(f"Editando: {produto_ativo}")
-            
-            # Adicionar Ingrediente
-            df_mats = get_materiais_db()
-            if not df_mats.empty:
-                c1, c2, c3 = st.columns([2,1,1])
-                ingrediente_escolhido = c1.selectbox("Escolha o Ingrediente", df_mats['nome'].unique())
-                qtd_receita = c2.number_input("Qtd na Receita (Kg)", min_value=0.1)
-                
-                if c3.button("➕ Adicionar"):
-                    ok, msg = adicionar_ingrediente_receita(produto_ativo, ingrediente_escolhido, qtd_receita)
-                    if ok:
-                        st.success("Ingrediente adicionado!")
-                        time.sleep(0.5)
-                        st.rerun()
-            
-            # Mostrar Receita Atual
-            st.markdown("### Composição Atual:")
-            receita_atual = get_receita_produto(produto_ativo)
-            if not receita_atual.empty:
-                st.table(receita_atual)
-            else:
-                st.info("Nenhum ingrediente adicionado ainda.")
+    st.header("⚙️ Configurações")
+    t1, t2 = st.tabs(["Material", "Receita"])
+    with t1:
+        with st.form("new_mat"):
+            n = st.text_input("Nome"); c = st.number_input("Custo"); e = st.number_input("Estoque")
+            if st.form_submit_button("Salvar") and n:
+                ok, m = cadastrar_material(n, c, e)
+                if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
+                else: st.error(m)
+    with t2:
+        prod = st.text_input("Nome do Produto (Existente ou Novo)")
+        mats = get_materiais_db()['nome'].unique() if not get_materiais_db().empty else []
+        if prod:
+            c1, c2, c3 = st.columns([2,1,1])
+            ing = c1.selectbox("Ingrediente", mats)
+            qtd = c2.number_input("Qtd (Kg)")
+            if c3.button("Add") and qtd > 0:
+                adicionar_ingrediente(prod, ing, qtd)
+                st.success("Adicionado!"); time.sleep(0.5); st.rerun()
+            st.table(get_receita_produto(prod))
