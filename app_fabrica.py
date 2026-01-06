@@ -8,7 +8,7 @@ import pytz
 from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS Fabrica 5.1", layout="wide")
+st.set_page_config(page_title="SaaS Fabrica 5.2", layout="wide")
 
 # --- 1. GERENCIAMENTO DE BANCO DE DADOS ---
 def init_db():
@@ -145,12 +145,12 @@ with st.sidebar:
     agora = datetime.now()
     st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
     st.divider()
-    st.info("Sistema v5.1 - Ajustes Finais")
+    st.info("Sistema v5.2 - Cores Inteligentes")
 
 st.title("🏭 Fabrica 4.0 - ERP Industrial")
 aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
-# --- ABA 1: PRODUÇÃO (SEM FORMULÁRIO PARA TER CÁLCULO AO VIVO) ---
+# --- ABA 1: PRODUÇÃO ---
 with aba_operacao:
     col_config, col_simulacao = st.columns([1, 2])
     lista_produtos = get_lista_produtos()
@@ -170,96 +170,97 @@ with aba_operacao:
                 custo_planejado = 0
                 custo_real = 0
                 
-                # Loop interativo (Sem st.form)
                 for index, row in df_receita.iterrows():
                     ingrediente = row['ingrediente']
                     qtd_meta = row['qtd_teorica']
                     custo_unit = row['custo']
-                    
                     custo_planejado += (qtd_meta * custo_unit)
                     
                     c1, c2 = st.columns([2, 1])
                     c1.markdown(f"**{ingrediente}** (Meta: {qtd_meta}kg)")
-                    
-                    # Key única para cada input para não perder o valor ao digitar
-                    val = c2.number_input(f"Real ({ingrediente})", value=float(qtd_meta), step=0.1, key=f"input_{ingrediente}_{produto_selecionado}")
-                    
+                    val = c2.number_input(f"Real ({ingrediente})", value=float(qtd_meta), step=0.1, key=f"in_{ingrediente}_{produto_selecionado}")
                     custo_real += (val * custo_unit)
                     consumo_real[ingrediente] = val
                 
                 st.divider()
-                
-                # --- PAINEL DE CUSTOS (VOLTOU!) ---
                 dif = custo_planejado - custo_real
                 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
                 col_kpi1.metric("Custo Meta", f"R$ {custo_planejado:.2f}")
                 col_kpi2.metric("Custo Real", f"R$ {custo_real:.2f}", delta=f"{dif:.2f}")
                 
-                if dif >= 0:
-                    col_kpi3.success(f"✅ ECONOMIA: R$ {dif:.2f}")
-                else:
-                    col_kpi3.error(f"🚨 PREJUÍZO: R$ {abs(dif):.2f}")
+                if dif >= 0: col_kpi3.success(f"✅ ECONOMIA: R$ {dif:.2f}")
+                else: col_kpi3.error(f"🚨 PREJUÍZO: R$ {abs(dif):.2f}")
                 
-                # Botão de Ação
                 if st.button("💾 FINALIZAR ORDEM E GERAR PDF", type="primary"):
                     data_salva = salvar_historico(operador, produto_selecionado, custo_planejado, custo_real, dif)
                     ok, msg = baixar_estoque(consumo_real)
-                    
                     if ok:
-                        st.toast("Sucesso! Lote registrado.", icon="✅") # Sem balões, apenas toast discreto
-                        
-                        # Gera PDF
+                        st.toast("Sucesso! Lote registrado.", icon="✅")
                         pdf_bytes = gerar_pdf_lote(data_salva, operador, produto_selecionado, consumo_real, custo_planejado, custo_real, dif)
-                        
                         st.markdown("### 📄 Relatório Pronto:")
-                        st.download_button(
-                            label="Baixar PDF Assinado",
-                            data=pdf_bytes,
-                            file_name=f"Relatorio_{produto_selecionado}.pdf",
-                            mime="application/pdf"
-                        )
-                    else:
-                        st.error(msg)
-            else:
-                st.warning("Produto sem receita cadastrada.")
-        else:
-            st.info("Cadastre produtos primeiro.")
+                        st.download_button("Baixar PDF Assinado", data=pdf_bytes, file_name=f"Relatorio_{produto_selecionado}.pdf", mime="application/pdf")
+                    else: st.error(msg)
+            else: st.warning("Produto sem receita.")
+        else: st.info("Cadastre produtos primeiro.")
 
-# --- ABA 2: ESTOQUE (COM GRÁFICO DE BARRAS) ---
+# --- ABA 2: ESTOQUE (MODIFICADA: BARRAS HORIZONTAIS COM CORES) ---
 with aba_estoque:
     st.header("Monitoramento de Tanques")
     df_estoque = get_materiais_db()
     
     if not df_estoque.empty:
-        # Gráfico Visual no Topo
-        st.subheader("Visão Gráfica")
-        st.bar_chart(df_estoque.set_index("nome")["estoque"], color="#29b5e8")
+        # Layout em colunas para os Cards
+        st.subheader("Níveis em Tempo Real")
         
-        # Tabela Detalhada com Barra de Progresso
-        st.subheader("Detalhamento")
+        # Consideramos 2000kg como a capacidade máxima do tanque para calcular a %
+        CAPACIDADE_MAXIMA = 2000.0
+        MINIMO_CRITICO = 300.0
         
-        # Define o máximo para a barra de progresso ficar bonita (baseado no maior estoque atual)
-        max_stock = df_estoque['estoque'].max() if df_estoque['estoque'].max() > 0 else 1000
+        # Grid de cards
+        cols = st.columns(3) # Exibe em 3 colunas
         
-        st.dataframe(
-            df_estoque[['nome', 'custo', 'estoque']],
-            use_container_width=True,
-            column_config={
-                "estoque": st.column_config.ProgressColumn(
-                    "Nível (Visual)", 
-                    format="%.1f kg", 
-                    min_value=0, 
-                    max_value=max_stock,
-                ),
-                "custo": st.column_config.NumberColumn("Custo Unit.", format="R$ %.2f"),
-                "nome": "Material"
-            },
-            hide_index=True
-        )
+        for i, row in df_estoque.iterrows():
+            col_atual = cols[i % 3] # Distribui entre as 3 colunas
+            
+            nome = row['nome']
+            estoque_atual = row['estoque']
+            porcentagem = (estoque_atual / CAPACIDADE_MAXIMA) * 100
+            if porcentagem > 100: porcentagem = 100
+            
+            # Lógica de Cores
+            if estoque_atual < MINIMO_CRITICO:
+                cor_barra = "#ff4b4b" # Vermelho
+                texto_status = "CRÍTICO"
+            elif estoque_atual < (CAPACIDADE_MAXIMA * 0.5):
+                cor_barra = "#ffa421" # Amarelo/Laranja
+                texto_status = "ATENÇÃO"
+            else:
+                cor_barra = "#21c354" # Verde
+                texto_status = "OK"
+            
+            # HTML/CSS para a barra customizada
+            with col_atual:
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-bottom: 10px; background-color: #262730;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="font-weight: bold; color: white;">{nome}</span>
+                        <span style="color: {cor_barra}; font-weight: bold;">{estoque_atual:.1f} kg</span>
+                    </div>
+                    <div style="width: 100%; background-color: #444; border-radius: 4px; height: 15px;">
+                        <div style="width: {porcentagem}%; background-color: {cor_barra}; height: 15px; border-radius: 4px;"></div>
+                    </div>
+                    <div style="font-size: 0.8em; color: #aaa; margin-top: 5px;">Status: {texto_status}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.divider()
+        st.subheader("Detalhamento (Tabela)")
+        st.dataframe(df_estoque[['nome', 'custo', 'estoque']], use_container_width=True, hide_index=True)
+        
     else: 
         st.info("Estoque vazio.")
 
-# --- ABA 3: GESTÃO (COM GRÁFICO META X REAL) ---
+# --- ABA 3: GESTÃO ---
 with aba_gestao:
     st.header("Dashboard Gerencial")
     conn = sqlite3.connect('fabrica.db')
@@ -272,23 +273,17 @@ with aba_gestao:
         k1.metric("Total Lotes", len(df_hist))
         k2.metric("Saldo Geral", f"R$ {df_hist['diferenca'].sum():.2f}")
         st.divider()
-        
         g1, g2 = st.columns(2)
-        
         with g1:
             st.subheader("Desempenho Financeiro")
-            st.line_chart(df_hist['diferenca']) # Linha do tempo do lucro/prejuízo
-            
+            st.line_chart(df_hist['diferenca'])
         with g2:
-            st.subheader("Meta vs Realizado (Por Produto)")
-            # Prepara dados para o gráfico comparativo
+            st.subheader("Meta vs Realizado")
             df_chart = df_hist.groupby('produto')[['custo_planejado', 'custo_real']].sum()
-            st.bar_chart(df_chart, stack=False) # stack=False coloca as barras lado a lado
-            
-        st.markdown("### Histórico Detalhado")
+            st.bar_chart(df_chart, stack=False)
         st.dataframe(df_hist.sort_values(by='id', ascending=False), use_container_width=True)
     else:
-        st.info("ℹ️ Nenhum dado de produção encontrado. Produza o primeiro lote para ver os gráficos.")
+        st.info("ℹ️ Nenhum dado de produção encontrado.")
 
 # --- ABA 4: CADASTROS ---
 with aba_cadastros:
