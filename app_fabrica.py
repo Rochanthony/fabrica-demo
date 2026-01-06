@@ -9,7 +9,7 @@ import pytz
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SaaS Fabrica 4.0", layout="wide")
 
-# --- 1. FUNÇÕES DE BANCO DE DADOS (AGORA COM ESTOQUE) ---
+# --- 1. FUNÇÕES DE BANCO DE DADOS (COM ESTOQUE) ---
 
 def init_db():
     """Cria as tabelas (Histórico e Estoque) se não existirem"""
@@ -253,7 +253,12 @@ with aba_operacao:
         k1, k2, k3 = st.columns(3)
         k1.metric("Planejado", f"R$ {custo_planejado:.2f}")
         k2.metric("Realizado", f"R$ {custo_real:.2f}", delta=f"{dif:.2f}")
-        k3.success("✅ OK") if dif >= 0 else k3.error("🚨 GASTOU MAIS")
+        
+        # CORREÇÃO AQUI (IF/ELSE TRADICIONAL)
+        if dif >= 0:
+            k3.success("✅ OK")
+        else:
+            k3.error("🚨 GASTOU MAIS")
         
         # BOTÃO SALVAR (A MÁGICA ACONTECE AQUI)
         if st.button("💾 FINALIZAR LOTE (BAIXAR ESTOQUE)", type="primary"):
