@@ -9,14 +9,13 @@ import pytz
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SaaS Fabrica 4.0", layout="wide")
 
-# --- 1. FUNÇÕES DE BANCO DE DADOS (COM ESTOQUE) ---
+# --- 1. FUNÇÕES DE BANCO DE DADOS ---
 
 def init_db():
-    """Cria as tabelas (Histórico e Estoque) se não existirem"""
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
     
-    # Tabela 1: Histórico de Produção
+    # Tabela Histórico
     c.execute('''
         CREATE TABLE IF NOT EXISTS historico (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +29,7 @@ def init_db():
         )
     ''')
     
-    # Tabela 2: Estoque (NOVA)
+    # Tabela Estoque
     c.execute('''
         CREATE TABLE IF NOT EXISTS estoque (
             nome TEXT PRIMARY KEY,
@@ -42,56 +41,39 @@ def init_db():
     conn.close()
 
 def sinc_estoque_inicial(lista_materiais_excel):
-    """
-    Sincroniza o Excel com o Banco de Dados.
-    Se um material do Excel não existir no Banco, cria ele com 1000kg (para teste).
-    """
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
-    
     for material in lista_materiais_excel:
-        # Tenta buscar o material no banco
         c.execute("SELECT nome FROM estoque WHERE nome = ?", (material,))
-        data = c.fetchone()
-        
-        # Se não existir, insere com saldo inicial de 1000kg
-        if not data:
+        if not c.fetchone():
             c.execute("INSERT INTO estoque (nome, quantidade) VALUES (?, ?)", (material, 1000.0))
-    
     conn.commit()
     conn.close()
 
-def get_estoque_atual():
-    """Pega o saldo atual de todos os materiais para mostrar na tela"""
+def get_estoque_dataframe():
+    """Retorna o estoque como um DataFrame do Pandas para facilitar a exibição"""
     conn = sqlite3.connect('fabrica.db')
-    df_estoque = pd.read_sql_query("SELECT * FROM estoque", conn)
+    df = pd.read_sql_query("SELECT nome as Material, quantidade as Saldo_Kg FROM estoque", conn)
     conn.close()
-    # Transforma em um dicionário para ficar fácil de usar: {'Resina': 1000, 'Xileno': 900}
-    return df_estoque.set_index('nome')['quantidade'].to_dict()
+    return df
 
 def baixar_estoque(consumo_real):
-    """
-    Recebe {'Resina': 50.0, 'Xileno': 10.0} e abate do banco de dados.
-    """
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
     try:
         for material, qtd in consumo_real.items():
             c.execute("UPDATE estoque SET quantidade = quantidade - ? WHERE nome = ?", (qtd, material))
         conn.commit()
-        return True, "Estoque atualizado com sucesso!"
+        return True, "Estoque atualizado!"
     except Exception as e:
         return False, str(e)
     finally:
         conn.close()
 
 def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
-    """Salva o lote no histórico"""
     try:
         conn = sqlite3.connect('fabrica.db')
         c = conn.cursor()
-        
-        # Fuso Horário
         try:
             fuso_br = pytz.timezone('America/Sao_Paulo')
             data_hora = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
@@ -103,16 +85,15 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (data_hora, operador, produto, custo_planejado, custo_real, diferenca, 
               "PREJUÍZO" if diferenca < 0 else "LUCRO/ECONOMIA"))
-        
         conn.commit()
         conn.close()
     except Exception as e:
-        st.error(f"Erro ao salvar histórico: {e}")
+        st.error(f"Erro ao salvar: {e}")
 
 # --- INICIALIZAÇÃO ---
 init_db()
 
-# --- 2. LÓGICA DE NEGÓCIO (CLASSES E EXCEL) ---
+# --- 2. LÓGICA DE NEGÓCIO ---
 class Material:
     def __init__(self, nome, custo, cas, riscos):
         self.nome = nome
@@ -135,14 +116,14 @@ class Produto:
 def carregar_dados():
     try:
         if not os.path.exists('dados_fabrica.xlsx'):
-            return None, None, "Arquivo Excel não encontrado."
+            return None, None, "Excel não encontrado."
 
         df_mat = pd.read_excel('dados_fabrica.xlsx', sheet_name='Materiais')
         df_rec = pd.read_excel('dados_fabrica.xlsx', sheet_name='Receitas')
         
         estoque_objs = {}
         produtos_db = {}
-        lista_nomes_materiais = [] # Para criar o estoque no banco
+        lista_nomes_materiais = []
 
         for _, row in df_mat.iterrows():
             nome_mat = row['Nome']
@@ -164,45 +145,31 @@ def carregar_dados():
     except Exception as e:
         return None, None, None, str(e)
 
-# --- 3. FRONTEND (VISUAL) ---
+# --- 3. FRONTEND ---
 
-# Carrega dados do Excel
 produtos_db, estoque_objs, lista_materiais, erro = carregar_dados()
 
 if erro:
     st.error(f"Erro Crítico: {erro}")
     st.stop()
 
-# Sincroniza o Banco de Dados com os materiais do Excel (Roda sempre que abre)
 if lista_materiais:
     sinc_estoque_inicial(lista_materiais)
 
-# SIDEBAR: Painel de Controle e Estoque
+# SIDEBAR (Mais limpa agora)
 with st.sidebar:
     st.header("🏭 Painel de Controle")
-    
-    # Relógio
     try:
         agora = datetime.now(pytz.timezone('America/Sao_Paulo'))
     except:
         agora = datetime.now()
     st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
     st.divider()
-    
-    # --- MONITOR DE ESTOQUE (NOVO!) ---
-    st.subheader("📦 Nível de Estoque (SQL)")
-    saldos = get_estoque_atual() # Busca no banco
-    
-    # Mostra uma tabelinha simples na lateral
-    if saldos:
-        df_saldo = pd.DataFrame(list(saldos.items()), columns=['Material', 'Kg'])
-        st.dataframe(df_saldo, hide_index=True, use_container_width=True, height=300)
-    else:
-        st.warning("Estoque vazio.")
+    st.info("💡 Dica: Verifique a aba 'Estoque' para alertas de reposição.")
 
-# CORPO PRINCIPAL
+# TÍTULO E ABAS (Agora são 3)
 st.title("🏭 Monitor de Produção Inteligente")
-aba_operacao, aba_gestao = st.tabs(["🔨 Operação", "📈 Gestão"])
+aba_operacao, aba_estoque, aba_gestao = st.tabs(["🔨 Operação", "📦 Estoque", "📈 Gestão"])
 
 # --- ABA 1: OPERAÇÃO ---
 with aba_operacao:
@@ -214,9 +181,8 @@ with aba_operacao:
         
         if produtos_db:
             produto_selecionado = st.selectbox("Produto", list(produtos_db.keys()))
-            st.info("O estoque será descontado automaticamente ao salvar.")
         else:
-            st.warning("Sem produtos cadastrados.")
+            st.warning("Sem produtos.")
             st.stop()
 
     with col_simulacao:
@@ -227,7 +193,6 @@ with aba_operacao:
         custo_planejado = 0
         custo_real = 0
         
-        # Formulário de Pesagem
         for nome_mp, dados in produto_obj.receita_padrao.items():
             qtd_meta = dados['qtd_teorica']
             custo_meta_item = qtd_meta * dados['objeto'].custo
@@ -236,7 +201,6 @@ with aba_operacao:
             c1, c2 = st.columns([2, 1])
             c1.markdown(f"**{nome_mp}** (Meta: {qtd_meta}kg)")
             
-            # Input de quantidade real
             qtd_digitada = c2.number_input(
                 f"Real ({nome_mp})", 
                 value=float(qtd_meta), step=0.1, key=f"in_{nome_mp}"
@@ -248,35 +212,74 @@ with aba_operacao:
 
         st.divider()
         
-        # Totais
         dif = custo_planejado - custo_real
         k1, k2, k3 = st.columns(3)
         k1.metric("Planejado", f"R$ {custo_planejado:.2f}")
         k2.metric("Realizado", f"R$ {custo_real:.2f}", delta=f"{dif:.2f}")
         
-        # CORREÇÃO AQUI (IF/ELSE TRADICIONAL)
         if dif >= 0:
             k3.success("✅ OK")
         else:
             k3.error("🚨 GASTOU MAIS")
         
-        # BOTÃO SALVAR (A MÁGICA ACONTECE AQUI)
-        if st.button("💾 FINALIZAR LOTE (BAIXAR ESTOQUE)", type="primary"):
-            # 1. Salva Histórico
+        if st.button("💾 FINALIZAR LOTE", type="primary"):
             salvar_historico(operador, produto_selecionado, custo_planejado, custo_real, dif)
-            
-            # 2. Baixa Estoque
-            sucesso, msg_estoque = baixar_estoque(consumo_real)
+            sucesso, msg = baixar_estoque(consumo_real)
             
             if sucesso:
-                st.toast(f"Lote salvo e Estoque atualizado!", icon="📉")
+                st.toast("Lote salvo e estoque atualizado!", icon="✅")
             else:
-                st.error(f"Erro no estoque: {msg_estoque}")
-                
+                st.error(msg)
             time.sleep(1.5)
             st.rerun()
 
-# --- ABA 2: GESTÃO ---
+# --- ABA 2: ESTOQUE (NOVA E MELHORADA) ---
+with aba_estoque:
+    st.header("📦 Controle de Almoxarifado")
+    
+    # Busca dados atuais
+    df_estoque = get_estoque_dataframe()
+    
+    # LÓGICA DE ALERTA (Ponto de Reposição)
+    LIMITE_ALERTA = 300 # kg
+    
+    # Filtra quem está abaixo do limite
+    materiais_baixos = df_estoque[df_estoque['Saldo_Kg'] < LIMITE_ALERTA]
+    
+    col_kpi1, col_kpi2 = st.columns(2)
+    col_kpi1.metric("Total de Itens Cadastrados", len(df_estoque))
+    col_kpi2.metric("Itens Críticos", len(materiais_baixos), delta_color="inverse")
+    
+    st.divider()
+
+    # Se tiver material acabando, mostra aviso grande
+    if not materiais_baixos.empty:
+        st.error(f"🚨 ATENÇÃO: {len(materiais_baixos)} materiais precisam de reposição urgente!")
+        # Mostra apenas os críticos primeiro
+        for index, row in materiais_baixos.iterrows():
+            st.markdown(f"- **{row['Material']}**: Restam apenas **{row['Saldo_Kg']:.1f} Kg**")
+        st.divider()
+    
+    # TABELA VISUAL
+    st.subheader("Visão Geral do Estoque")
+    
+    # Configuração visual da tabela (Barra de progresso)
+    st.dataframe(
+        df_estoque,
+        use_container_width=True,
+        column_config={
+            "Saldo_Kg": st.column_config.ProgressColumn(
+                "Nível do Tanque (Kg)",
+                help="Volume atual disponível",
+                format="%.1f kg",
+                min_value=0,
+                max_value=1200, # Ajustei um máximo visual para a barra ficar bonita
+            ),
+        },
+        hide_index=True
+    )
+
+# --- ABA 3: GESTÃO ---
 with aba_gestao:
     st.header("Histórico Gerencial")
     
@@ -288,23 +291,20 @@ with aba_gestao:
     conn.close()
     
     if not df_hist.empty:
-        # Filtros e KPIs
         prod_filter = st.multiselect("Filtrar Produto", df_hist['produto'].unique())
         if prod_filter:
             df_hist = df_hist[df_hist['produto'].isin(prod_filter)]
             
         kp1, kp2, kp3 = st.columns(3)
         kp1.metric("Lotes", len(df_hist))
-        kp2.metric("Saldo Financeiro", f"R$ {df_hist['diferenca'].sum():.2f}")
+        kp2.metric("Financeiro (Economia/Prejuízo)", f"R$ {df_hist['diferenca'].sum():.2f}")
         kp3.metric("Última Produção", pd.to_datetime(df_hist['data']).max().strftime('%d/%m %H:%M'))
         
         st.divider()
-        
         g1, g2 = st.columns(2)
-        g1.subheader("Tendência (R$)")
+        g1.subheader("Tendência")
         g1.line_chart(df_hist['diferenca'])
-        
-        g2.subheader("Comparativo Custo")
+        g2.subheader("Custo por Produto")
         g2.bar_chart(df_hist.groupby('produto')[['custo_planejado', 'custo_real']].sum())
         
         st.dataframe(df_hist, use_container_width=True)
