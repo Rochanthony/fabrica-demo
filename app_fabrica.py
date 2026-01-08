@@ -8,7 +8,40 @@ import pytz
 from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS TeCHemical v5.5", layout="wide")
+st.set_page_config(page_title="SaaS TeCHemical v6.0", layout="wide")
+
+# --- 0. SISTEMA DE LOGIN SIMPLES (MVP) ---
+def check_password():
+    """Retorna True se o usuário estiver logado, caso contrário, pede senha."""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if st.session_state["password_correct"]:
+        return True
+
+    # Tela de Login
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<br><br><h2 style='text-align: center;'>🔐 Acesso Restrito</h2>", unsafe_allow_html=True)
+        st.info("Sistema exclusivo para teste piloto.")
+        
+        user = st.text_input("Usuário")
+        pwd = st.text_input("Senha", type="password")
+        
+        if st.button("Entrar", type="primary", use_container_width=True):
+            # DEFINE AQUI SEU USUÁRIO E SENHA DO MVP
+            if user == "admin" and pwd == "1234":
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("Acesso negado.")
+    return False
+
+# SE NÃO ESTIVER LOGADO, PARA TUDO AQUI
+if not check_password():
+    st.stop()
+
+# --- DAQUI PARA BAIXO, O CÓDIGO SÓ RODA SE TIVER LOGADO ---
 
 # --- 1. GERENCIAMENTO DE BANCO DE DADOS ---
 def init_db():
@@ -201,6 +234,12 @@ with st.sidebar:
         agora = datetime.now()
         
     st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
+    
+    # Botão de Logout
+    if st.button("Sair / Logout"):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
     st.divider()
     
     # Botão de Reset
