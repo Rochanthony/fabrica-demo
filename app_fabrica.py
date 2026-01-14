@@ -8,7 +8,7 @@ import pytz
 from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS TeCHemical v8.0", layout="wide")
+st.set_page_config(page_title="SaaS TeCHemical v8.1", layout="wide")
 
 # --- 0. SISTEMA DE LOGIN ---
 def check_password():
@@ -55,7 +55,7 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS materiais (
             nome TEXT PRIMARY KEY, custo REAL, estoque REAL, unidade TEXT, codigo TEXT)''')
             
-    # Tabela de Códigos de Produtos (NOVA)
+    # Tabela de Códigos de Produtos
     c.execute('''CREATE TABLE IF NOT EXISTS produtos_codigos (
             nome_produto TEXT PRIMARY KEY, codigo TEXT)''')
 
@@ -236,9 +236,20 @@ def gerar_pdf_lote(data, operador, produto, itens_realizados, unidades_dict, cod
 init_db()
 popular_dados_iniciais()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (AGORA COM DATA E HORA DE VOLTA) ---
 with st.sidebar:
     st.header("🏭 Painel de Controle")
+    
+    # --- BLOCO DE HORA RESTAURADO ---
+    try:
+        fuso_br = pytz.timezone('America/Sao_Paulo')
+        agora = datetime.now(fuso_br)
+    except:
+        agora = datetime.now()
+    st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
+    st.divider()
+    # ----------------------------------
+
     if st.button("🔴 RESETAR BANCO DE DADOS"):
         try:
             os.remove("fabrica.db")
@@ -246,6 +257,7 @@ with st.sidebar:
             time.sleep(1)
             st.rerun()
         except: st.error("Erro ao deletar.")
+    
     st.markdown("---")
     st.markdown("<div style='text-align: center; color: #888;'><small>Desenvolvido por</small><br><b style='font-size: 1.2em; color: #4CAF50;'>🧪 TeCHemical</b></div>", unsafe_allow_html=True)
 
