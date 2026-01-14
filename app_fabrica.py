@@ -8,7 +8,7 @@ import pytz
 from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS TeCHemical v9.5", layout="wide")
+st.set_page_config(page_title="SaaS TeCHemical v9.6", layout="wide")
 
 # --- 1. GERENCIAMENTO DE BANCO DE DADOS ---
 def init_db():
@@ -16,7 +16,7 @@ def init_db():
         conn = sqlite3.connect('fabrica.db')
         c = conn.cursor()
         
-        # Tabelas
+        # Criação das tabelas
         c.execute('''CREATE TABLE IF NOT EXISTS historico (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, operador TEXT,
                 produto TEXT, custo_planejado REAL, custo_real REAL, diferenca REAL, status TEXT)''')
@@ -33,13 +33,13 @@ def init_db():
         conn.commit()
         conn.close()
     except Exception as e:
-        st.error(f"Erro ao iniciar banco de dados: {e}")
+        st.error(f"Erro DB: {e}")
 
 def popular_dados_iniciais():
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
     try:
-        # Verifica se a tabela existe
+        # Verifica se tabela materiais existe
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='materiais'")
         if c.fetchone():
             c.execute("SELECT count(*) FROM materiais")
@@ -54,8 +54,14 @@ def popular_dados_iniciais():
                 c.executemany("INSERT INTO materiais VALUES (?, ?, ?, ?, ?, ?)", materiais)
                 
                 try:
-                    # Inserindo produto padrão
-                    prod_info = ('Tinta Piso Premium', 'PA-500')
-                    c.execute("INSERT OR IGNORE INTO produtos_codigos VALUES (?, ?)", prod_info)
+                    # Inserção segura de produtos
+                    c.execute("INSERT OR IGNORE INTO produtos_codigos VALUES (?, ?)", ('Tinta Piso Premium', 'PA-500'))
                     
-                    receita =
+                    receita = [
+                        ('Tinta Piso Premium', 'Resina Epóxi', 60.0), 
+                        ('Tinta Piso Premium', 'Solvente X', 30.0), 
+                        ('Tinta Piso Premium', 'Pigmento Azul', 10.0), 
+                        ('Tinta Piso Premium', 'Lata 18L', 1.0)
+                    ]
+                    
+                    c.execute("DELETE FROM receitas WHERE nome_produto
