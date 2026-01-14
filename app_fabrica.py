@@ -7,10 +7,10 @@ import sqlite3
 import pytz
 from fpdf import FPDF
 
-# --- CONFIGURAÇÃO DA PÁGINA (OBRIGATÓRIO SER A PRIMEIRA LINHA) ---
-st.set_page_config(page_title="SaaS TeCHemical v9.4", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="SaaS TeCHemical v9.5", layout="wide")
 
-# --- 1. GERENCIAMENTO DE BANCO DE DADOS (COM PROTEÇÃO) ---
+# --- 1. GERENCIAMENTO DE BANCO DE DADOS ---
 def init_db():
     try:
         conn = sqlite3.connect('fabrica.db')
@@ -39,11 +39,9 @@ def popular_dados_iniciais():
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
     try:
-        # FIX DA LINHA 50: Verifica se a tabela existe antes de contar
+        # Verifica se a tabela existe
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='materiais'")
-        tabela_existe = c.fetchone()
-        
-        if tabela_existe:
+        if c.fetchone():
             c.execute("SELECT count(*) FROM materiais")
             if c.fetchone()[0] == 0:
                 materiais = [
@@ -55,7 +53,9 @@ def popular_dados_iniciais():
                 ]
                 c.executemany("INSERT INTO materiais VALUES (?, ?, ?, ?, ?, ?)", materiais)
                 
-                # Tenta inserir produtos
                 try:
-                    c.execute("INSERT OR IGNORE INTO produtos_codigos VALUES (?, ?)", ('Tinta Piso Premium', 'PA-500'))
+                    # Inserindo produto padrão
+                    prod_info = ('Tinta Piso Premium', 'PA-500')
+                    c.execute("INSERT OR IGNORE INTO produtos_codigos VALUES (?, ?)", prod_info)
+                    
                     receita =
