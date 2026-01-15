@@ -29,12 +29,14 @@ def check_password():
         
         if st.button("Entrar", type="primary", use_container_width=True):
             try:
+                # Tenta usar st.secrets se configurado
                 secrets_pass = st.secrets["passwords"]
                 if user in secrets_pass and pwd == secrets_pass[user]:
                     st.session_state["password_correct"] = True
                     st.rerun()
                 else: st.error("Acesso negado.")
             except:
+                # Fallback local
                 if user == "admin" and pwd == "1234":
                     st.session_state["password_correct"] = True
                     st.rerun()
@@ -49,12 +51,14 @@ if not check_password():
 def init_db():
     conn = sqlite3.connect('fabrica.db')
     c = conn.cursor()
+    
     # Tabela Histórico
     c.execute('''CREATE TABLE IF NOT EXISTS historico (
             id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, operador TEXT,
             produto TEXT, custo_planejado REAL, custo_real REAL, diferenca REAL, status TEXT)''')
     
     # Tabela Materiais (AGORA COM ESTOQUE MINIMO)
+    # Se a tabela já existe sem a coluna, o ideal é resetar o banco pelo botão na sidebar
     c.execute('''CREATE TABLE IF NOT EXISTS materiais (
             nome TEXT PRIMARY KEY, custo REAL, estoque REAL, unidade TEXT, estoque_minimo REAL)''')
             
@@ -71,7 +75,7 @@ def popular_dados_iniciais():
     try:
         c.execute("SELECT count(*) FROM materiais")
         if c.fetchone()[0] == 0:
-            # Dados padrão para teste (COM UNIDADES E ESTOQUE MINIMO DEFAULT)
+            # Dados padrão para teste (Nome, Custo, Estoque, Unidade, Estoque Mínimo)
             materiais = [
                 ('Resina', 15.0, 1000.0, 'kg', 200.0), 
                 ('Solvente', 8.5, 800.0, 'L', 150.0), 
@@ -100,9 +104,11 @@ def get_materiais_db():
         df = pd.read_sql("SELECT * FROM materiais", conn)
         df['custo'] = pd.to_numeric(df['custo'], errors='coerce').fillna(0.0)
         df['estoque'] = pd.to_numeric(df['estoque'], errors='coerce').fillna(0.0)
-        # Garante colunas novas
+        
+        # Garante que as colunas novas existam (fallback para evitar erro se não resetar banco)
         if 'unidade' not in df.columns: df['unidade'] = 'kg'
-        if 'estoque_minimo' not in df.columns: df['estoque_minimo'] = 100.0 # Default fallback
+        if 'estoque_minimo' not in df.columns: df['estoque_minimo'] = 0.0
+        
     except:
         df = pd.DataFrame(columns=['nome', 'custo', 'estoque', 'unidade', 'estoque_minimo'])
     finally:
@@ -111,6 +117,7 @@ def get_materiais_db():
 
 def get_receita_produto(nome_produto):
     conn = sqlite3.connect('fabrica.db')
+    # Traz também a unidade do material
     query = """SELECT r.ingrediente, r.qtd_teorica, m.custo, m.unidade FROM receitas r
                JOIN materiais m ON r.ingrediente = m.nome WHERE r.nome_produto = ?"""
     try:
@@ -159,10 +166,105 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
         return data_hora
     except Exception as e: return None
 
-# --- FUNÇÕES DE CADASTRO ATUALIZADAS ---
-def cadastrar_material(nome, custo, estoque, unidade, est_minimo):
+# --- FUNÇÕES DE CADASTRO (ATUALIZADAS E CORRIGIDAS) ---
+def cadastrar_material(nome, custo, estoque, unidade, estoque_min):
     conn = sqlite3.connect('fabrica.db')
     try:
-        # Inserindo com 5 valores agora
-        conn.execute("INSERT INTO materiais VALUES (?, ?, ?, ?, ?)", (str(nome), float(custo), float(estoque), str(unidade), float(est_minimo)))
-        conn.commit(); conn.close(); return True, "Sucesso"
+        # Inserindo com 5 valores (incluindo estoque mínimo)
+        conn.execute("INSERT INTO materiais VALUES (?, ?, ?, ?, ?)", 
+                     (str(nome), float(custo), float(estoque), str(unidade), float(estoque_min)))
+        conn.commit()
+        conn.close()
+        return True, "Sucesso"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+def atualizar_material_db(nome, novo_custo, novo_estoque, novo_minimo):
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        conn.execute("UPDATE materiais SET custo = ?, estoque = ?, estoque_minimo = ? WHERE nome = ?", 
+                     (float(novo_custo), float(novo_estoque), float(novo_minimo), nome))
+        conn.commit()
+        conn.close()
+        return True, "Atualizado"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+def adicionar_ingrediente(produto, ingrediente, qtd):
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT count(*) FROM receitas WHERE nome_produto=? AND ingrediente=?", (produto, ingrediente))
+        exists = cursor.fetchone()[0]
+        if exists > 0:
+            cursor.execute("UPDATE receitas SET qtd_teorica = ? WHERE nome_produto=? AND ingrediente=?", (float(qtd), produto, ingrediente))
+        else:
+            cursor.execute("INSERT INTO receitas (nome_produto, ingrediente, qtd_teorica) VALUES (?, ?, ?)", (produto, ingrediente, float(qtd)))
+        conn.commit()
+        conn.close()
+        return True, "Sucesso"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+# --- PDF GENERATOR ---
+def gerar_pdf_lote(data, operador, produto, itens_realizados, unidades_dict, custo_plan, custo_real, diferenca):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, f"RELATÓRIO DE PRODUÇÃO - {produto}", ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(0, 10, f"Data: {data}", ln=True)
+    pdf.cell(0, 10, f"Operador: {operador}", ln=True)
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(70, 10, "Material", 1); pdf.cell(30, 10, "Qtd Real", 1); pdf.cell(30, 10, "Unid.", 1); pdf.ln()
+    pdf.set_font("Arial", '', 12)
+    for mat, qtd in itens_realizados.items():
+        uni = unidades_dict.get(mat, '-')
+        try: mat_txt = str(mat).encode('latin-1', 'replace').decode('latin-1')
+        except: mat_txt = str(mat)
+        pdf.cell(70, 10, mat_txt, 1); pdf.cell(30, 10, f"{float(qtd):.2f}", 1); pdf.cell(30, 10, str(uni), 1); pdf.ln()
+    pdf.ln(10)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, "Financeiro", ln=True)
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(0, 10, f"Planejado: R$ {custo_plan:.2f}", ln=True)
+    pdf.cell(0, 10, f"Realizado: R$ {custo_real:.2f}", ln=True)
+    if diferenca >= 0:
+        pdf.set_text_color(0, 128, 0)
+        status = f"ECONOMIA: R$ {diferenca:.2f}"
+    else:
+        pdf.set_text_color(255, 0, 0)
+        status = f"PREJUÍZO: R$ {diferenca:.2f}"
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, status, ln=True)
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- INICIALIZAÇÃO ---
+init_db()
+popular_dados_iniciais()
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("🏭 Painel de Controle")
+    try:
+        fuso_br = pytz.timezone('America/Sao_Paulo')
+        agora = datetime.now(fuso_br)
+    except:
+        agora = datetime.now()
+    st.write(f"📅 {agora.strftime('%d/%m/%Y')} | ⏰ {agora.strftime('%H:%M')}")
+    
+    if st.button("Sair / Logout"):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
+    st.divider()
+    if st.button("🔴 RESETAR BANCO DE DADOS", help="Clique aqui se deu erro após atualização"):
+        try:
+            if os.path.exists("fabrica.db"):
+                os.remove("fabrica.db")
+                st.warning("Banco deletado.
