@@ -320,57 +320,6 @@ with aba_operacao:
             else: st.warning("Produto sem receita cadastrada.")
         else: st.info("Cadastre produtos na aba Cadastros primeiro.")
 
-#se der merda, apaga a partir daqui:
-
-# ... (Código anterior de seleção de produto e inputs) ...
-
-# 1. Preparar a Lista de Baixa (Calculada Automaticamente)
-lista_baixa = []
-pode_baixar = True
-
-# df_rec é o DataFrame com a receita do produto selecionado
-for index, row in df_rec.iterrows():
-    # Verifica se tem estoque suficiente
-    if row['Saldo Disponível'] < row['Qtd Necessária']:
-        pode_baixar = False # Trava o botão se faltar material
-    
-    # Monta o dicionário para a função de baixa
-    lista_baixa.append({
-        'ingrediente': row['ingrediente'],
-        'qtd': row['Qtd Necessária'], # Quantidade já multiplicada pelos lotes
-        'unidade': row['unidade']
-    })
-
-# 2. O Botão de Ação
-if pode_baixar:
-    if st.button("🚀 REQUISITAR E BAIXAR ESTOQUE", type="primary", use_container_width=True):
-        
-        # PASSO A: Executa a baixa no banco
-        ok, msg = baixar_estoque_automatico(lista_baixa)
-        
-        if ok:
-            # PASSO B: Salva no histórico para o Dashboard
-            data_log = salvar_historico_lote(operador, produto, qtd_lotes, custo_total_ordem)
-            st.success(f"Sucesso! {msg}")
-            
-            # PASSO C: Gera o PDF
-            pdf_data = gerar_pdf_requisicao(data_log, operador, produto, qtd_lotes, lista_baixa, custo_total_ordem)
-            
-            # PASSO D: Mostra botão para baixar o arquivo
-            st.download_button(
-                label="📄 Baixar PDF da Ordem",
-                data=pdf_data,
-                file_name=f"OP_{produto}_{data_log}.pdf",
-                mime="application/pdf"
-            )
-            
-            # Recarrega a página após 3 segundos para atualizar os estoques visuais
-            time.sleep(3)
-            st.rerun()
-        else:
-            st.error(f"Erro ao gravar no banco: {msg}")
-else:
-    st.error("🚨 ESTOQUE INSUFICIENTE: Não é possível gerar esta ordem.")
 
 # --- ABA 2: ESTOQUE ---
 with aba_estoque:
@@ -530,4 +479,5 @@ with aba_cadastros:
                             if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
                             else: st.error(m)
                 else: st.warning("Cadastre materiais antes.")
+
 
