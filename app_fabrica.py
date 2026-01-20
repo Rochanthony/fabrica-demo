@@ -247,6 +247,9 @@ st.title("🏭 Fabrica 4.0 - ERP Industrial")
 aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção (Requisição)", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
 # --- ABA 1: PRODUÇÃO (MANTIDA IGUAL) ---
+# --- LOCAL: ABA 1 (PRODUÇÃO) ---
+# Substitua tudo de "with aba_operacao:" até antes de "with aba_estoque:" por isso:
+
 with aba_operacao:
     col_config, col_simulacao = st.columns([1, 2])
     lista_produtos = get_lista_produtos()
@@ -283,6 +286,7 @@ with aba_operacao:
                     st.error("🚨 ESTOQUE INSUFICIENTE. Não é possível requisitar.")
                 else:
                     st.markdown("---")
+                    # Lógica de Requisitar
                     if st.button("🚀 REQUISITAR E BAIXAR ESTOQUE", type="primary", use_container_width=True):
                         consumo_final = {}
                         unidades_dict = {}
@@ -291,19 +295,35 @@ with aba_operacao:
                             unidades_dict[row['ingrediente']] = row['unidade']
                         
                         ok, msg = baixar_estoque(consumo_final)
+                        
                         if ok:
                             data_salva = salvar_historico(operador, produto_selecionado, custo_total_previsto, custo_total_previsto, 0)
                             st.toast("Sucesso! Estoque baixado.", icon="✅")
+                            
+                            # GERAÇÃO DO PDF
                             try:
                                 pdf_bytes = gerar_pdf_lote(data_salva, operador, produto_selecionado, consumo_final, unidades_dict, custo_total_previsto, custo_total_previsto, qtd_lotes)
                                 st.success("Ordem Processada com Sucesso!")
-                                st.download_button("📄 Baixar PDF da Requisição", data=pdf_bytes, file_name=f"Req_{produto_selecionado}.pdf", mime="application/pdf")
+                                
+                                # --- A CORREÇÃO ESTÁ AQUI (key único para não dar erro) ---
+                                st.download_button(
+                                    label="📄 Baixar PDF da Requisição",
+                                    data=pdf_bytes,
+                                    file_name=f"Req_{produto_selecionado}.pdf",
+                                    mime="application/pdf",
+                                    key=f"btn_pdf_{int(time.time())}" 
+                                )
+                                # ----------------------------------------------------------
+                                
                                 time.sleep(3)
                                 st.rerun()
-                            except:
-                                pdf_bytes = gerar_pdf_lote(data_salva, operador, produto_selecionado, consumo_final, unidades_dict, custo_total_previsto, custo_total_previsto, qtd_lotes)
-                                st.download_button("📄 Baixar PDF da Requisição", data=pdf_bytes, file_name=f"Req_{produto_selecionado}.pdf", mime="application/pdf")
-                        else: st.error(f"Erro no Banco: {msg}")
+                                
+                            except Exception as e_pdf:
+                                st.error(f"Erro ao gerar botão: {e_pdf}")
+                                
+                        else:
+                            st.error(f"Erro no Banco de Dados: {msg}")
+
             else: st.warning("Este produto não tem receita cadastrada.")
         else: st.info("Selecione um produto para iniciar.")
 
@@ -450,3 +470,4 @@ with aba_cadastros:
                             if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
                             else: st.error(m)
                 else: st.warning("Cadastre materiais antes.")
+
