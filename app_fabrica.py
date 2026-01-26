@@ -247,7 +247,7 @@ st.title("🏭 Fabrica 4.0 - ERP Industrial")
 aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção (Requisição)", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
 st.markdown("---")
-    st.subheader("💾 Segurança")
+    st.subheader("Segurança")
     
     # Lê o arquivo do banco em bytes para permitir o download
     try:
@@ -486,5 +486,6 @@ with aba_cadastros:
                             if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
                             else: st.error(m)
                 else: st.warning("Cadastre materiais antes.")
+
 
 
