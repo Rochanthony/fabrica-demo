@@ -246,6 +246,22 @@ with st.sidebar:
 st.title("🏭 Fabrica 4.0 - ERP Industrial")
 aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção (Requisição)", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
+st.markdown("---")
+    st.subheader("💾 Segurança")
+    
+    # Lê o arquivo do banco em bytes para permitir o download
+    try:
+        with open("fabrica.db", "rb") as fp:
+            btn = st.download_button(
+                label="📥 Baixar Backup dos Dados",
+                data=fp,
+                file_name=f"backup_fabrica_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+                mime="application/x-sqlite3",
+                help="Clique aqui ao final do dia para salvar seus dados!"
+            )
+    except FileNotFoundError:
+        st.warning("Banco de dados ainda não criado para backup.")
+
 # --- ABA 1: PRODUÇÃO (MANTIDA IGUAL) ---
 # --- LOCAL: ABA 1 (PRODUÇÃO) ---
 # Substitua tudo de "with aba_operacao:" até antes de "with aba_estoque:" por isso:
@@ -470,4 +486,5 @@ with aba_cadastros:
                             if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
                             else: st.error(m)
                 else: st.warning("Cadastre materiais antes.")
+
 
