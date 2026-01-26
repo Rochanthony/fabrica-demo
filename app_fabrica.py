@@ -217,6 +217,8 @@ init_db()
 popular_dados_iniciais()
 
 # --- SIDEBAR ---
+
+# --- SIDEBAR (Barra Lateral Completa e Corrigida) ---
 with st.sidebar:
     st.header("🏭 Painel de Controle")
     try:
@@ -231,7 +233,9 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    if st.button("🔴 RESETAR BANCO", help="Obrigatório clicar aqui após atualizar o código"):
+    
+    # Botão de Resetar (Existente)
+    if st.button("🔴 RESETAR BANCO", help="Use apenas se houver erro grave"):
         try:
             os.remove("fabrica.db")
             st.warning("Banco deletado. Atualize a página.")
@@ -240,19 +244,13 @@ with st.sidebar:
         except:
             st.error("Erro ao deletar.")
 
+    # --- NOVO: ÁREA DE BACKUP (Adicionado aqui) ---
     st.markdown("---")
-    st.markdown("<div style='text-align: center; color: #888;'><small>Desenvolvido por</small><br><b style='font-size: 1.2em; color: #4CAF50;'>🧪 TeCHemical</b></div>", unsafe_allow_html=True)
-
-st.title("🏭 Fabrica 4.0 - ERP Industrial")
-aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção (Requisição)", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
-
-st.markdown("---")
-    st.subheader("Segurança")
+    st.subheader("💾 Segurança")
     
-    # Lê o arquivo do banco em bytes para permitir o download
     try:
         with open("fabrica.db", "rb") as fp:
-            btn = st.download_button(
+            st.download_button(
                 label="📥 Baixar Backup dos Dados",
                 data=fp,
                 file_name=f"backup_fabrica_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
@@ -260,7 +258,15 @@ st.markdown("---")
                 help="Clique aqui ao final do dia para salvar seus dados!"
             )
     except FileNotFoundError:
-        st.warning("Banco de dados ainda não criado para backup.")
+        st.warning("Banco ainda não criado.")
+    except Exception as e:
+        st.error(f"Erro no backup: {e}")
+
+    st.markdown("---")
+    st.markdown("<div style='text-align: center; color: #888;'><small>Desenvolvido por</small><br><b style='font-size: 1.2em; color: #4CAF50;'>🧪 TeCHemical</b></div>", unsafe_allow_html=True)
+
+st.title("🏭 Fabrica 4.0 - ERP Industrial")
+aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção (Requisição)", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
 # --- ABA 1: PRODUÇÃO (MANTIDA IGUAL) ---
 # --- LOCAL: ABA 1 (PRODUÇÃO) ---
@@ -486,6 +492,7 @@ with aba_cadastros:
                             if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
                             else: st.error(m)
                 else: st.warning("Cadastre materiais antes.")
+
 
 
 
