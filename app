@@ -7,10 +7,26 @@ import sqlite3
 import pytz
 from fpdf import FPDF
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SaaS TeCHemical v7.2 (Alertas)", layout="wide")
+# --- CONFIGURAÇÃO PROFISSIONAL (VISUAL) ---
+st.set_page_config(
+    page_title="TeCHemical ERP | Gestão Industrial",
+    page_icon="🏭",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- 0. SISTEMA DE LOGIN (MVP) ---
+# --- ESCONDER MENU DE DESENVOLVEDOR (ESTÉTICA) ---
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            [data-testid="stToolbar"] {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# --- 0. SISTEMA DE LOGIN (MVP ROBUSTO) ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
@@ -18,15 +34,16 @@ def check_password():
     if st.session_state["password_correct"]:
         return True
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         st.markdown("<br><br><h2 style='text-align: center;'>🔐 Acesso Restrito</h2>", unsafe_allow_html=True)
-        st.info("Sistema exclusivo para teste piloto.")
+        st.markdown("<p style='text-align: center; color: gray;'>Sistema de Gestão Industrial TeCHemical</p>", unsafe_allow_html=True)
         
         user = st.text_input("Usuário")
         pwd = st.text_input("Senha", type="password")
         
         if st.button("Entrar", type="primary", use_container_width=True):
+            # Tenta pegar secrets, se não der, usa o padrão local
             try:
                 secrets_pass = st.secrets["passwords"]
                 if user in secrets_pass and pwd == secrets_pass[user]:
@@ -34,11 +51,12 @@ def check_password():
                     st.rerun()
                 else: st.error("Acesso negado.")
             except:
+                # LOGIN PADRÃO PARA DEMONSTRAÇÃO LOCAL
                 if user == "admin" and pwd == "1234":
                     st.session_state["password_correct"] = True
                     st.rerun()
                 else:
-                    st.error("Acesso negado.")
+                    st.error("Usuário ou senha incorretos.")
     return False
 
 if not check_password():
@@ -52,7 +70,6 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, operador TEXT,
             produto TEXT, custo_planejado REAL, custo_real REAL, diferenca REAL, status TEXT)''')
     
-    # ATUALIZADO: Adicionada coluna estoque_minimo
     c.execute('''CREATE TABLE IF NOT EXISTS materiais (
             nome TEXT PRIMARY KEY, custo REAL, estoque REAL, unidade TEXT, estoque_minimo REAL)''')
             
@@ -68,7 +85,6 @@ def popular_dados_iniciais():
     try:
         c.execute("SELECT count(*) FROM materiais")
         if c.fetchone()[0] == 0:
-            # Dados padrão AGORA COM ESTOQUE MÍNIMO (5º item)
             materiais = [
                 ('Resina', 15.0, 1000.0, 'kg', 200.0), 
                 ('Solvente', 8.5, 800.0, 'L', 150.0), 
@@ -155,11 +171,10 @@ def salvar_historico(operador, produto, custo_planejado, custo_real, diferenca):
         return data_hora
     except Exception as e: return None
 
-# --- FUNÇÕES DE CADASTRO (ATUALIZADAS) ---
+# --- FUNÇÕES DE CADASTRO ---
 def cadastrar_material(nome, custo, estoque, unidade, estoque_min):
     conn = sqlite3.connect('fabrica.db')
     try:
-        # Inserindo agora 5 valores
         conn.execute("INSERT INTO materiais VALUES (?, ?, ?, ?, ?)", 
                      (str(nome), float(custo), float(estoque), str(unidade), float(estoque_min)))
         conn.commit(); conn.close(); return True, "Sucesso"
@@ -168,7 +183,6 @@ def cadastrar_material(nome, custo, estoque, unidade, estoque_min):
 def atualizar_material_db(nome, novo_custo, novo_estoque, novo_minimo):
     conn = sqlite3.connect('fabrica.db')
     try:
-        # Atualiza também o estoque_minimo
         conn.execute("UPDATE materiais SET custo = ?, estoque = ?, estoque_minimo = ? WHERE nome = ?", 
                      (float(novo_custo), float(novo_estoque), float(novo_minimo), nome))
         conn.commit(); conn.close(); return True, "Atualizado"
@@ -217,8 +231,6 @@ init_db()
 popular_dados_iniciais()
 
 # --- SIDEBAR ---
-
-# --- SIDEBAR (Barra Lateral Completa e Corrigida) ---
 with st.sidebar:
     st.header("🏭 Painel de Controle")
     try:
@@ -234,7 +246,6 @@ with st.sidebar:
 
     st.divider()
     
-    # Botão de Resetar (Existente)
     if st.button("🔴 RESETAR BANCO", help="Use apenas se houver erro grave"):
         try:
             os.remove("fabrica.db")
@@ -244,7 +255,6 @@ with st.sidebar:
         except:
             st.error("Erro ao deletar.")
 
-    # --- NOVO: ÁREA DE BACKUP (Adicionado aqui) ---
     st.markdown("---")
     st.subheader("💾 Segurança")
     
@@ -266,12 +276,9 @@ with st.sidebar:
     st.markdown("<div style='text-align: center; color: #888;'><small>Desenvolvido por</small><br><b style='font-size: 1.2em; color: #4CAF50;'>🧪 TeCHemical</b></div>", unsafe_allow_html=True)
 
 st.title("🏭 Fabrica 4.0 - ERP Industrial")
-aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção (Requisição)", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
+aba_operacao, aba_estoque, aba_gestao, aba_cadastros = st.tabs(["🔨 Produção", "📦 Estoque", "📈 Gestão", "⚙️ Cadastros"])
 
-# --- ABA 1: PRODUÇÃO (MANTIDA IGUAL) ---
-# --- LOCAL: ABA 1 (PRODUÇÃO) ---
-# Substitua tudo de "with aba_operacao:" até antes de "with aba_estoque:" por isso:
-
+# --- ABA 1: PRODUÇÃO ---
 with aba_operacao:
     col_config, col_simulacao = st.columns([1, 2])
     lista_produtos = get_lista_produtos()
@@ -284,7 +291,7 @@ with aba_operacao:
 
     with col_simulacao:
         if produto_selecionado:
-            st.subheader(f"2. Prévia da Requisição: {produto_selecionado}")
+            st.subheader(f"2. Prévia: {produto_selecionado}")
             df_receita = get_receita_produto(produto_selecionado)
             
             if not df_receita.empty:
@@ -305,10 +312,9 @@ with aba_operacao:
                 st.metric("Custo Total da Ordem", f"R$ {custo_total_previsto:.2f}")
 
                 if "❌ FALTA" in df_receita['Status'].values:
-                    st.error("🚨 ESTOQUE INSUFICIENTE. Não é possível requisitar.")
+                    st.error("🚨 ESTOQUE INSUFICIENTE. Compre material antes de produzir.")
                 else:
                     st.markdown("---")
-                    # Lógica de Requisitar
                     if st.button("🚀 REQUISITAR E BAIXAR ESTOQUE", type="primary", use_container_width=True):
                         consumo_final = {}
                         unidades_dict = {}
@@ -322,12 +328,10 @@ with aba_operacao:
                             data_salva = salvar_historico(operador, produto_selecionado, custo_total_previsto, custo_total_previsto, 0)
                             st.toast("Sucesso! Estoque baixado.", icon="✅")
                             
-                            # GERAÇÃO DO PDF
                             try:
                                 pdf_bytes = gerar_pdf_lote(data_salva, operador, produto_selecionado, consumo_final, unidades_dict, custo_total_previsto, custo_total_previsto, qtd_lotes)
-                                st.success("Ordem Processada com Sucesso!")
+                                st.success("Ordem Processada!")
                                 
-                                # --- A CORREÇÃO ESTÁ AQUI (key único para não dar erro) ---
                                 st.download_button(
                                     label="📄 Baixar PDF da Requisição",
                                     data=pdf_bytes,
@@ -335,28 +339,24 @@ with aba_operacao:
                                     mime="application/pdf",
                                     key=f"btn_pdf_{int(time.time())}" 
                                 )
-                                # ----------------------------------------------------------
-                                
                                 time.sleep(3)
                                 st.rerun()
-                                
                             except Exception as e_pdf:
                                 st.error(f"Erro ao gerar botão: {e_pdf}")
-                                
                         else:
                             st.error(f"Erro no Banco de Dados: {msg}")
-
             else: st.warning("Este produto não tem receita cadastrada.")
         else: st.info("Selecione um produto para iniciar.")
 
-# --- ABA 2: ESTOQUE (ATUALIZADA COM ALERTA REAL) ---
+# --- ABA 2: ESTOQUE ---
 with aba_estoque:
     st.header("Monitoramento de Tanques")
     df_estoque = get_materiais_db()
     
     if not df_estoque.empty:
         st.subheader("Níveis em Tempo Real")
-        CAPACIDADE_MAXIMA = 2000.0 # Visual apenas
+        # Ajuste este valor para o tamanho médio do tanque/lote do seu cliente
+        CAPACIDADE_MAXIMA = 2000.0 
         
         cols = st.columns(3)
         for i, row in df_estoque.iterrows():
@@ -364,14 +364,11 @@ with aba_estoque:
             nome = str(row['nome'])
             estoque_atual = float(row['estoque'])
             unidade = str(row['unidade'])
-            
-            # AQUI ESTÁ A LÓGICA DO ALERTA BASEADA NO BANCO
-            estoque_minimo = float(row['estoque_minimo']) # Pega do cadastro
+            estoque_minimo = float(row['estoque_minimo'])
             
             porcentagem = (estoque_atual / CAPACIDADE_MAXIMA) * 100
             if porcentagem > 100: porcentagem = 100
             
-            # Comparação dinâmica
             if estoque_atual < estoque_minimo:
                 cor_barra = "#ff4b4b" # Vermelho
                 texto_status = f"🚨 CRÍTICO (Mín: {estoque_minimo})"
@@ -384,38 +381,99 @@ with aba_estoque:
             
             with col_atual:
                 st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-bottom: 10px; background-color: #262730;">
+                <div style="border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #1E1E1E;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                        <span style="font-weight: bold; color: white;">{nome}</span>
+                        <span style="font-weight: bold; color: white; font-size: 1.1em;">{nome}</span>
                         <span style="color: {cor_barra}; font-weight: bold;">{estoque_atual:.1f} {unidade}</span>
                     </div>
-                    <div style="width: 100%; background-color: #444; border-radius: 4px; height: 15px;">
-                        <div style="width: {porcentagem}%; background-color: {cor_barra}; height: 15px; border-radius: 4px;"></div>
+                    <div style="width: 100%; background-color: #333; border-radius: 5px; height: 10px;">
+                        <div style="width: {porcentagem}%; background-color: {cor_barra}; height: 10px; border-radius: 5px; transition: width 0.5s;"></div>
                     </div>
-                    <div style="font-size: 0.8em; color: #aaa; margin-top: 5px;">{texto_status}</div>
+                    <div style="font-size: 0.8em; color: #ccc; margin-top: 5px;">{texto_status}</div>
                 </div>
                 """, unsafe_allow_html=True)
         st.divider()
         st.dataframe(df_estoque, use_container_width=True, hide_index=True)
     else: st.info("Estoque vazio.")
 
-# --- ABA 3: GESTÃO (MANTIDA) ---
+# --- ABA 3: GESTÃO ---
+# --- ABA 3: GESTÃO (ATUALIZADA COM GRÁFICOS) ---
 with aba_gestao:
-    st.header("Dashboard Gerencial")
-    conn = sqlite3.connect('fabrica.db')
-    try: df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
-    except: df_hist = pd.DataFrame()
-    conn.close()
+    st.header("📈 Dashboard Gerencial")
     
-    if not df_hist.empty:
-        k1, k2 = st.columns(2)
-        k1.metric("Total de Ordens", len(df_hist))
-        k2.metric("Volume Financeiro", f"R$ {df_hist['custo_real'].sum():.2f}")
-        st.divider()
-        st.dataframe(df_hist.sort_values(by='id', ascending=False), use_container_width=True)
-    else: st.info("ℹ️ Nenhum dado de produção encontrado.")
+    # 1. CONEXÃO UNIFICADA PARA LER TUDO
+    conn = sqlite3.connect('fabrica.db')
+    try:
+        df_hist = pd.read_sql_query("SELECT * FROM historico", conn)
+        df_materiais = pd.read_sql_query("SELECT * FROM materiais", conn)
+    except:
+        df_hist = pd.DataFrame()
+        df_materiais = pd.DataFrame()
+    finally:
+        conn.close()
 
-# --- ABA 4: CADASTROS (ATUALIZADA) ---
+    # 2. CÁLCULOS DOS INDICADORES
+    # -- Estoque --
+    valor_total_estoque = 0.0
+    qtd_criticos = 0
+    if not df_materiais.empty:
+        # Garante que são números
+        df_materiais['custo'] = pd.to_numeric(df_materiais['custo'], errors='coerce').fillna(0)
+        df_materiais['estoque'] = pd.to_numeric(df_materiais['estoque'], errors='coerce').fillna(0)
+        df_materiais['estoque_minimo'] = pd.to_numeric(df_materiais['estoque_minimo'], errors='coerce').fillna(0)
+        
+        # Valor monetário parado no tanque
+        valor_total_estoque = (df_materiais['estoque'] * df_materiais['custo']).sum()
+        
+        # Itens que precisam de compra urgente
+        criticos = df_materiais[df_materiais['estoque'] < df_materiais['estoque_minimo']]
+        qtd_criticos = len(criticos)
+
+    # -- Produção --
+    total_ordens = len(df_hist) if not df_hist.empty else 0
+    custo_total_produzido = df_hist['custo_real'].sum() if not df_hist.empty else 0.0
+
+    # 3. EXIBINDO OS KPIs (CARTOES NO TOPO)
+    st.subheader("1. Visão Geral da Fábrica")
+    k1, k2, k3, k4 = st.columns(4)
+    
+    k1.metric("📦 Valor em Estoque", f"R$ {valor_total_estoque:,.2f}", help="Dinheiro parado em matéria-prima")
+    k2.metric("💰 Custo Produzido (Total)", f"R$ {custo_total_produzido:,.2f}")
+    k3.metric("🔨 Ordens Executadas", total_ordens)
+    k4.metric("⚠️ Alertas de Reposição", qtd_criticos, delta="- Crítico" if qtd_criticos > 0 else "Normal", delta_color="inverse")
+
+    st.markdown("---")
+
+    # 4. GRÁFICOS VISUAIS
+    col_graf1, col_graf2 = st.columns(2)
+
+    with col_graf1:
+        st.subheader("📊 Nível de Estoque (Top 5)")
+        if not df_materiais.empty:
+            # Gráfico de Barras: Mostra os materiais com maior quantidade
+            top5_estoque = df_materiais.sort_values(by='estoque', ascending=False).head(5)
+            st.bar_chart(top5_estoque.set_index('nome')['estoque'], color="#21c354") # Verde
+        else:
+            st.info("Sem materiais cadastrados.")
+
+    with col_graf2:
+        st.subheader("📉 Custo por Ordem (Cronologia)")
+        if not df_hist.empty and 'custo_real' in df_hist.columns:
+            # Gráfico de Linha: Mostra a variação do custo das ordens ao longo do tempo
+            st.line_chart(df_hist['custo_real'], color="#ff4b4b") # Vermelho
+        else:
+            st.info("Sem histórico de produção.")
+
+    st.markdown("---")
+    
+    # 5. TABELA DE DADOS BRUTOS (Mantida no final para auditoria)
+    with st.expander("📋 Ver Histórico Completo de Ordens"):
+        if not df_hist.empty:
+            st.dataframe(df_hist.sort_values(by='id', ascending=False), use_container_width=True, hide_index=True)
+        else:
+            st.write("Nenhum dado encontrado.")
+
+# --- ABA 4: CADASTROS ---
 with aba_cadastros:
     st.header("⚙️ Central de Cadastros")
     col_mat, col_rec = st.columns(2)
@@ -431,9 +489,7 @@ with aba_cadastros:
                 col_u1, col_u2 = st.columns(2)
                 e = col_u1.number_input("Estoque Inicial", min_value=0.0)
                 u = col_u2.selectbox("Unidade", ["kg", "L", "un", "m", "cx", "ton"])
-                
-                # NOVO CAMPO
-                emin = st.number_input("Estoque Mínimo (Alerta)", min_value=0.0, help="Abaixo disso, fica vermelho")
+                emin = st.number_input("Estoque Mínimo (Alerta)", min_value=0.0)
 
                 if st.form_submit_button("Cadastrar"):
                     if n:
@@ -455,8 +511,6 @@ with aba_cadastros:
                     with st.form("edit_mat_form"):
                         new_c = st.number_input("Novo Custo (R$)", value=float(dados_atuais['custo']), step=0.1)
                         new_e = st.number_input(f"Ajuste Estoque ({unidade_atual})", value=float(dados_atuais['estoque']), step=1.0)
-                        
-                        # CAMPO DE EDIÇÃO DO MÍNIMO
                         new_min = st.number_input("Novo Mínimo (Alerta)", value=float(dados_atuais['estoque_minimo']), step=10.0)
                         
                         if st.form_submit_button("Atualizar"):
@@ -492,7 +546,3 @@ with aba_cadastros:
                             if ok: st.success("Salvo!"); time.sleep(1); st.rerun()
                             else: st.error(m)
                 else: st.warning("Cadastre materiais antes.")
-
-
-
-
